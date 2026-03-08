@@ -219,3 +219,48 @@ skills:
       - name: result
         type: dict
         description: 查詢/分析結果
+
+  - name: gemini_bridge
+    module: gemini_bridge.py
+    handler: run
+    version: "1.0"
+    description: ArcMind 与 antigravity/gemini CLI 整合桥接 — 零 API Key 调用 Gemini
+    permissions: [shell, filesystem]
+    tags: [gemini, antigravity, ai, bridge, cli]
+    governor_required: false
+    inputs:
+      - name: task
+        type: string
+        required: true
+        description: 任务描述（将发送给 gemini CLI）
+      - name: cwd
+        type: string
+        required: false
+        description: 工作目录（默认当前目录）
+      - name: timeout
+        type: int
+        required: false
+        default: 600
+        description: 超时秒数（默认 10 分钟）
+      - name: mode
+        type: string
+        required: false
+        default: "direct"
+        description: "direct（直接调用）或 filebox（文件信箱）"
+      - name: task_id
+        type: string
+        required: false
+        description: 任务ID（filebox 模式用）
+    outputs:
+      - name: stdout
+        type: string
+        description: gemini CLI 标准输出
+      - name: stderr
+        type: string
+        description: gemini CLI 标准错误
+      - name: exit_code
+        type: int
+        description: 退出码
+      - name: task_id
+        type: string
+        description: 任务ID
