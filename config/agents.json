@@ -18,8 +18,8 @@
     {
       "id": "search",
       "name": "Search Agent",
-      "model": "ollama:qwen3:8b",
-      "purpose": "網路搜尋 + 資訊整理",
+      "model": "nvidia:meta/llama-3.1-70b-instruct",
+      "purpose": "網路搜尋 + 資訊整理 (NVIDIA NIM 免费 70B)",
       "capabilities": [
         "web_search",
         "research",

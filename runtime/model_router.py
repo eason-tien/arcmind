@@ -380,6 +380,20 @@ class ModelRouter:
             except Exception as e:
                 logger.warning("Custom provider init failed: %s", e)
 
+        # ── 動態載入所有 OpenAI-compatible 新 Providers (DeepSeek, xAI, Kimi, 等 16 家) ──
+        for pname, key_attr in settings._OPENAI_COMPATIBLE:
+            api_key = getattr(settings, key_attr, "")
+            if api_key:
+                try:
+                    cfg = settings.get_provider_config(pname)
+                    base_url = cfg.get("base_url")
+                    self._providers[pname] = OpenAICompatibleProvider(
+                        pname, api_key, base_url=base_url
+                    )
+                    logger.info("Provider ready: %s (%s)", pname, base_url)
+                except Exception as e:
+                    logger.warning("Provider init failed for %s: %s", pname, e)
+
         # 自訂 provider（來自 routing_rules.yaml 的 providers 區塊）
         for pname, pconf in self._rules.providers.items():
             if pname in self._providers:

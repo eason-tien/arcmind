@@ -194,32 +194,39 @@ def create_app() -> FastAPI:
         # 每個 provider 的建議模型清單
         recommended = {
             "anthropic": [
-                "anthropic:claude-opus-4-6",
+                "anthropic:claude-3-7-sonnet-20250219",
                 "anthropic:claude-sonnet-4-6",
                 "anthropic:claude-haiku-4-5-20251001",
             ],
-            "openai": ["openai:gpt-4o", "openai:gpt-4o-mini", "openai:o1"],
+            "openai": ["openai:gpt-4o", "openai:o3-mini", "openai:o1"],
             "google": [
                 "google:gemini-2.0-flash",
-                "google:gemini-2.0-flash-lite",
+                "google:gemini-2.5-flash",
                 "google:gemini-1.5-pro",
             ],
+            "deepseek": ["deepseek:deepseek-chat", "deepseek:deepseek-reasoner"],
+            "xai": ["xai:grok-3", "xai:grok-3-mini"],
             "groq": [
                 "groq:llama-3.3-70b-versatile",
                 "groq:llama-3.1-8b-instant",
-                "groq:mixtral-8x7b-32768",
             ],
             "mistral": [
                 "mistral:mistral-large-latest",
-                "mistral:mistral-small-latest",
                 "mistral:codestral-latest",
             ],
+            "minimax": ["minimax:MiniMax-M2.5"],
+            "moonshot": ["moonshot:moonshot-v1-auto"],
+            "zhipu": ["zhipu:glm-4-plus"],
+            "siliconflow": ["siliconflow:Qwen/Qwen2.5-72B-Instruct"],
+            "openrouter": ["openrouter:auto"],
             "ollama": [
                 f"ollama:{settings.ollama_default_model}",
                 "ollama:llama3.2",
                 "ollama:qwen2.5:7b",
                 "ollama:deepseek-r1:7b",
-                "ollama:phi4",
+            ],
+            "ollama_remote": [
+                f"ollama_remote:{settings.ollama_remote_default_model}",
             ],
         }
         return {

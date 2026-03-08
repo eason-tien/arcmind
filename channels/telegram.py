@@ -52,18 +52,20 @@ def get_session_pref(session_id: str) -> dict:
 # ── Model Catalog ────────────────────────────────────────────────────────────
 
 _MODEL_CATALOG = [
-    ("🔵 Claude Sonnet",     "anthropic:claude-sonnet-4-6"),
-    ("🌟 GPT-5.4",           "openai:gpt-5.4"),
+    ("🔵 Claude 3.7",       "anthropic:claude-3-7-sonnet-20250219"),
     ("🟢 GPT-4o",            "openai:gpt-4o"),
-    ("✨ GPT-4.5",           "openai:gpt-4.5-preview"),
-    ("⚡ GPT-4o Mini",       "openai:gpt-4o-mini"),
-    ("🧠 o3",                "openai:o3"),
     ("🧠 o3-mini",           "openai:o3-mini"),
-    ("🚀 o4-mini",           "openai:o4-mini"),
-    ("💎 Gemini Flash",      "google:gemini-2.0-flash"),
-    ("🟠 Groq Llama 70B",   "groq:llama-3.3-70b-versatile"),
+    ("💎 Gemini 2.0",        "google:gemini-2.0-flash"),
+    ("🐋 DeepSeek V3",       "deepseek:deepseek-chat"),
+    ("🧠 DeepSeek R1",       "deepseek:deepseek-reasoner"),
+    ("✖️ xAI Grok-3",        "xai:grok-3"),
+    ("🟠 Groq 70B",          "groq:llama-3.3-70b-versatile"),
+    ("🟡 MiniMax M2.5",      "minimax:MiniMax-M2.5"),
+    ("🌙 Kimi (Moonshot)",   "moonshot:moonshot-v1-auto"),
+    ("🟣 Zhipu GLM-4",       "zhipu:glm-4-plus"),
+    ("🌐 OpenRouter",        "openrouter:auto"),
     ("🏠 Ollama 本地",       "ollama:auto"),
-    ("🟡 MiniMax M2.5",      "custom:auto"),
+    ("☁️ Ollama 遠端",       "ollama_remote:auto"),
     ("↩️ 自動選擇",          ""),
 ]
 
