@@ -200,6 +200,33 @@
   - 鬧鐘設定、媒體掃描、App 列表
   - 屏幕截圖、通知讀取、剪貼簿
 
+### 16. Gemini Bridge (`skills/gemini_bridge.py`)
+- ArcMind 與 Antigravity (Gemini CLI) 的軟件級聯動
+- 直接調用 `gemini -p "task"` — 零 API Key（用 Google 帳號認證）
+- 文件信箱模式：`.agents/bridge/inbox/` → `.agents/bridge/outbox/`
+- 共享記憶：兩邊讀寫同一個 `.agents/memory/`
+- 自動查找 CLI：`gemini` → `npx @google/gemini-cli` (fallback)
+
+### 17. 自動更新 (`ops/auto_updater.py`)
+- `check` — 從 GitHub API 檢查最新 Release 版本
+- `update` — `git pull origin main` 拉取最新代碼
+- `force_update` — `git reset --hard origin/main` 強制同步
+- `version` — 讀取本地 VERSION 檔案
+- 檢查記錄存在 `data/.last_update_check`
+
+### 18. 錯誤回報 (`ops/error_reporter.py`)
+- 自動向 GitHub Issues 回報運行時錯誤（含堆疊追蹤）
+- 嚴重等級標籤：`critical | high | medium | low`
+- `@auto_report` 裝飾器 — 任何函數異常自動回報
+- 本地 JSONL 備份：`logs/error_reports.jsonl`
+- 無 GITHUB_TOKEN 時僅記錄本地
+
+### 19. CI/CD 與版本管理
+- **版本號**：`VERSION` 檔案（語義化版本 x.y.z）
+- **CI**：GitHub Actions — push/PR 自動跑 pytest，失敗自動建 Issue
+- **Release**：git tag `v*` 自動建 GitHub Release + CHANGELOG
+- **更新日誌**：`CHANGELOG.md`（Keep a Changelog 格式）
+
 ---
 
 ## 三、系統指令
