@@ -1,0 +1,40 @@
+# ArcMind 多 Provider 模型路由規則
+# 版本 2.1 — MAIN: MiniMax-M2.5, Fallback: OLLAMA
+
+version: "2.1"
+
+# ── MAIN 模型（MiniMax M2.5）──
+default: custom:MiniMax-M2.5
+
+# 任務類型路由
+task_type_rules:
+  # 一般任務 → MiniMax M2.5（主力）
+  - match: [code_gen, summarize, plan, browser, file_ops, general, code_review, architecture, complex_analysis, deep_reasoning]
+    model: custom:MiniMax-M2.5
+    max_tokens: 8192
+
+  # 快速分類 → MiniMax（低延遲）
+  - match: [classify, quick_check, format, extract, web_search]
+    model: custom:MiniMax-M2.5
+    max_tokens: 2048
+
+  # 本地模型優先（隱私敏感任務）
+  - match: [local_only, private]
+    model: ollama:qwen3:8b
+    max_tokens: 4096
+
+# 成本預算路由
+budget_rules:
+  - budget: free
+    model: ollama:qwen3:8b
+  - budget: low
+    model: custom:MiniMax-M2.5
+  - budget: medium
+    model: custom:MiniMax-M2.5
+  - budget: high
+    model: custom:MiniMax-M2.5
+
+# Fallback 鏈
+fallback_chain:
+  - custom:MiniMax-M2.5
+  - ollama:qwen3:8b

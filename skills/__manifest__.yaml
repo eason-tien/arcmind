@@ -1,0 +1,221 @@
+# ArcMind 內建技能清單
+# 格式相容 OpenClaw Skill manifest
+
+version: "1.0"
+
+skills:
+  - name: web_search
+    module: web_search.py
+    handler: run
+    version: "1.0"
+    description: 使用 DuckDuckGo 搜尋網路並返回摘要結果
+    permissions: [network]
+    tags: [search, web, information]
+    governor_required: true
+    inputs:
+      - name: query
+        type: string
+        required: true
+        description: 搜尋關鍵字
+      - name: max_results
+        type: int
+        required: false
+        default: 5
+        description: 最多返回幾筆結果
+    outputs:
+      - name: results
+        type: list
+        description: 搜尋結果列表
+
+  - name: file_ops
+    module: file_ops.py
+    handler: run
+    version: "1.0"
+    description: 本地檔案讀寫、列目錄、刪除等操作
+    permissions: [filesystem]
+    tags: [file, io, storage]
+    governor_required: true
+    inputs:
+      - name: operation
+        type: string
+        required: true
+        description: "read | write | list | delete | exists | mkdir"
+      - name: path
+        type: string
+        required: true
+        description: 目標路徑
+      - name: content
+        type: string
+        required: false
+        description: 寫入內容（operation=write 時必填）
+    outputs:
+      - name: result
+        type: any
+        description: 操作結果
+
+  - name: code_exec
+    module: code_exec.py
+    handler: run
+    version: "1.0"
+    description: 在受限沙盒中執行 Python 程式碼片段
+    permissions: [exec]
+    tags: [code, python, exec]
+    governor_required: true
+    inputs:
+      - name: code
+        type: string
+        required: true
+        description: 要執行的 Python 程式碼
+      - name: timeout_s
+        type: int
+        required: false
+        default: 10
+        description: 執行超時秒數
+    outputs:
+      - name: stdout
+        type: string
+      - name: stderr
+        type: string
+      - name: exit_code
+        type: int
+
+  - name: trading
+    module: trading.py
+    handler: trading_skill
+    version: "1.0"
+    description: 台股真实规则模拟交易系统 - 自主执行买卖决策，追求8%以上获益率
+    permissions: [filesystem, network]
+    tags: [trading, stock, taiwan]
+    governor_required: false
+    inputs:
+      - name: action
+        type: string
+        required: false
+        default: "trade"
+        description: "trade | summary | check_positions | analyze"
+    outputs:
+      - name: result
+        type: dict
+        description: 交易执行结果
+
+  - name: self_iteration
+    module: self_iteration.py
+    handler: run
+    version: "1.0"
+    description: 每週 Agent 自我迭代會議 — 收集情報、圓桌會議、生成改進計劃
+    permissions: [filesystem, network, shell]
+    tags: [iteration, self-improvement, meeting, cron]
+    governor_required: false
+    inputs:
+      - name: phase
+        type: string
+        required: false
+        default: "meeting"
+        description: "meeting (週度會議) | daily_check (每日執行檢查)"
+    outputs:
+      - name: result
+        type: dict
+        description: 迭代結果
+
+  - name: daily_report
+    module: daily_report.py
+    handler: run
+    version: "1.0"
+    description: 每日早報 — 天氣、新聞、系統狀態、迭代進度
+    permissions: [filesystem, network]
+    tags: [report, daily, news, weather, cron]
+    governor_required: false
+    inputs:
+      - name: action
+        type: string
+        required: false
+        default: "report"
+        description: "report (早報) | update_location (更新位置)"
+    outputs:
+      - name: result
+        type: dict
+        description: 報告結果
+
+  - name: github_skill
+    module: github_skill.py
+    handler: run
+    version: "1.0"
+    description: GitHub 完整整合 — Repos/PRs/Issues/Actions/Releases
+    permissions: [network]
+    tags: [github, git, pr, issue, ci, release]
+    governor_required: false
+    inputs:
+      - name: action
+        type: string
+        required: true
+        description: "list_repos | get_repo_status | create_pr | list_prs | merge_pr | list_issues | create_issue | close_issue | comment | list_actions | trigger_action | create_release"
+      - name: repo
+        type: string
+        required: false
+        description: "owner/repo 格式"
+    outputs:
+      - name: result
+        type: dict
+        description: GitHub API 結果
+
+  - name: document_skill
+    module: document_skill.py
+    handler: run
+    version: "1.0"
+    description: 文件生成 — 分析公司模板 + 生成 PPT/Excel（公司模板模式或自由設計）
+    permissions: [filesystem, network]
+    tags: [ppt, excel, document, report, template, spreadsheet]
+    governor_required: false
+    inputs:
+      - name: action
+        type: string
+        required: true
+        description: "analyze_template | list_templates | create_ppt | create_excel"
+      - name: template
+        type: string
+        required: false
+        description: "公司模板名稱（使用公司模板模式）"
+      - name: style
+        type: string
+        required: false
+        description: "自由設計風格: corporate | modern | elegant | nature | tech"
+    outputs:
+      - name: result
+        type: dict
+        description: 生成結果
+
+  - name: env_discovery
+    module: env_discovery.py
+    handler: run
+    version: "1.0"
+    description: 三維度認知掃描 — L1宿主機/L2服務/L3網路拓撲（跨平台 macOS+Windows+Linux）
+    permissions: [filesystem, network]
+    tags: [env, system, host, service, network, topology, discovery]
+    governor_required: false
+    inputs:
+      - name: action
+        type: string
+        required: true
+        description: "host_info | resource_check | scan_ports | list_services | find_configs | db_discovery | network_interfaces | arp_table | route_table | full_scan"
+    outputs:
+      - name: result
+        type: dict
+        description: 掃描結果
+
+  - name: gitnexus_skill
+    module: gitnexus_skill.py
+    handler: run
+    version: "1.0"
+    description: GitNexus 代碼智慧引擎 — 知識圖譜查詢、爆炸半徑分析、智能重命名
+    permissions: [filesystem, network]
+    tags: [code, graph, analysis, impact, refactor, gitnexus]
+    governor_required: false
+    inputs:
+      - name: action
+        type: string
+        required: true
+        description: "query | context | impact | detect | rename | list_repos | reindex | status"
+    outputs:
+      - name: result
+        type: dict
+        description: 查詢/分析結果

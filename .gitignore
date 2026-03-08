@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Environment & Secrets
+.env
+!.env.example
+
+# Data (user-specific)
+data/
+evidence/logs/
+*.db
+*.sqlite
+
+# Logs
+logs/
+
+# Temp files
+temp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.gitnexus/
+
+# Node
+node_modules/
+
+# Agents data (user-specific memory & task state)
+.agents/memory/long_term.jsonl
+.agents/memory/short_term/*.jsonl
+.agents/harness/active/*.json
+.agents/harness/completed/*.json
+
+# Plist (macOS LaunchAgent — user-specific)
+*.plist
+
+# Subfolder repos
+agentic-workmem/
+*.bak
+n8n-workflows/

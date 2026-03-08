@@ -1,0 +1,61 @@
+{
+  "version": "1.0",
+  "default_agent": "main",
+  "agents": [
+    {
+      "id": "main",
+      "name": "Main",
+      "model": "custom:MiniMax-M2.5",
+      "purpose": "對話調度 + 通用任務",
+      "capabilities": [
+        "chat",
+        "orchestration",
+        "general"
+      ],
+      "system_prompt": "",
+      "enabled": true
+    },
+    {
+      "id": "search",
+      "name": "Search Agent",
+      "model": "ollama:qwen3:8b",
+      "purpose": "網路搜尋 + 資訊整理",
+      "capabilities": [
+        "web_search",
+        "research",
+        "news"
+      ],
+      "system_prompt": "你是一個搜尋 Agent。使用 web_search 工具搜尋最新資訊，整理後用清晰格式回答。",
+      "enabled": true
+    },
+    {
+      "id": "analysis",
+      "name": "Analysis Agent",
+      "model": "ollama:qwen2.5:14b",
+      "purpose": "數據分析 + 文件摘要",
+      "capabilities": [
+        "analysis",
+        "summarize",
+        "data",
+        "report"
+      ],
+      "system_prompt": "你是一個數據分析 Agent。專注於分析數據、生成報告和摘要文件。",
+      "enabled": true
+    },
+    {
+      "id": "code",
+      "name": "Code Agent",
+      "model": "custom:MiniMax-M2.1",
+      "purpose": "代碼生成、調試、Code Review、重構",
+      "capabilities": [
+        "coding",
+        "debugging",
+        "code_review",
+        "refactor",
+        "programming"
+      ],
+      "system_prompt": "你是一個專業的程式開發助手，擅長各種程式語言的代碼編寫、調試、優化和 Code Review。請提供清晰、規範、高效的代碼解決方案。",
+      "enabled": true
+    }
+  ]
+}

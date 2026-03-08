@@ -1,0 +1,232 @@
+{
+  "name": "Stock Market Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Taiwan Stock Trading Hours Check (UTC+8)\n// Trading hours: Monday-Friday 9:00-13:30\n\nconst now = new Date();\nconst day = now.getUTCDay(); // 0=Sunday, 6=Saturday\nconst hour = now.getUTCHours() + 8; // Convert to Taiwan time\nconst minute = now.getUTCMinutes();\n\n// Day check: Monday(1) to Friday(5)\nconst isWeekday = day >= 1 && day <= 5;\n\n// Time check: 9:00 - 13:30\nconst isTradingHours = (hour > 9 || (hour === 9 && minute >= 0)) && \n                        (hour < 13 || (hour === 13 && minute <= 30));\n\nconst canTrade = isWeekday && isTradingHours;\n\nconst dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\n\nreturn {\n  json: {\n    canTrade: canTrade,\n    isWeekday: isWeekday,\n    isTradingHours: isTradingHours,\n    currentTime: now.toISOString(),\n    taiwanTime: `${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`,\n    dayName: dayNames[day],\n    message: canTrade ? 'Market is OPEN - Trading allowed' : 'Market is CLOSED - Trading not allowed'\n  }\n};"
+      },
+      "id": "checkTradingHours",
+      "name": "Check Trading Hours",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.canTrade }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "ifMarketOpen",
+      "name": "If Market Open",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://tw.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=2330.TW&apikey=demo",
+        "options": {}
+      },
+      "id": "getStockPrice",
+      "name": "Get TSMCC Price",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [850, 250]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse stock data and calculate changes\nconst data = $input.first().json['Global Quote'] || {};\nconst previousClose = parseFloat(data['08. previous close'] || 0);\nconst currentPrice = parseFloat(data['05. price'] || 0);\nconst change = parseFloat(data['09. change'] || 0);\nconst changePercent = parseFloat(data['10. change percent']?.replace('%','') || 0);\n\n// Alert thresholds\nconst THRESHOLD_UP = 3.0;   // Alert if up > 3%\nconst THRESHOLD_DOWN = -3.0; // Alert if down > -3%\n\nlet alertLevel = 'normal';\nif (changePercent >= THRESHOLD_UP) alertLevel = 'OVERBUUGHT';\nelse if (changePercent <= THRESHOLD_DOWN) alertLevel = 'OVERSOLD';\n\nreturn {\n  json: {\n    symbol: data['01. symbol'] || '2330.TW',\n    previousClose: previousClose,\n    currentPrice: currentPrice,\n    change: change,\n    changePercent: changePercent,\n    alertLevel: alertLevel,\n    shouldAlert: Math.abs(changePercent) >= 3,\n    volume: data['06. volume'],\n    high: data['03. high'],\n    low: data['04. low'],\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "parseStockData",
+      "name": "Parse Stock Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 250]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.shouldAlert }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "ifShouldAlert",
+      "name": "If Should Alert",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1250, 250]
+    },
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:8100/v1/webhook",
+        "method": "POST",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "stock_alert"
+            },
+            {
+              "name": "symbol",
+              "value": "={{ $json.symbol }}"
+            },
+            {
+              "name": "price",
+              "value": "={{ $json.currentPrice }}"
+            },
+            {
+              "name": "changePercent",
+              "value": "={{ $json.changePercent }}"
+            },
+            {
+              "name": "alertLevel",
+              "value": "={{ $json.alertLevel }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "notifyArcMind",
+      "name": "Notify ArcMind",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1450, 150]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Log monitoring result\nconst stock = $input.first().json;\nconsole.log(`[Stock Monitor] ${stock.symbol} - Price: ${stock.currentPrice}, Change: ${stock.changePercent}%`);\n\nreturn { json: stock };"
+      },
+      "id": "logResult",
+      "name": "Log Result",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1450, 350]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Market closed - log and skip trading\nconst check = $input.first().json;\nconsole.log(`[Market Closed] ${check.message} - ${check.taiwanTime} ${check.dayName}`);\n\nreturn { json: check };"
+      },
+      "id": "logMarketClosed",
+      "name": "Log Market Closed",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 450]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Check Trading Hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Trading Hours": {
+      "main": [
+        [
+          {
+            "node": "If Market Open",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Market Open": {
+      "main": [
+        [
+          {
+            "node": "Get TSMCC Price",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Market Closed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get TSMCC Price": {
+      "main": [
+        [
+          {
+            "node": "Parse Stock Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Stock Data": {
+      "main": [
+        [
+          {
+            "node": "If Should Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Should Alert": {
+      "main": [
+        [
+          {
+            "node": "Notify ArcMind",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "id": "stock-monitor"
+}

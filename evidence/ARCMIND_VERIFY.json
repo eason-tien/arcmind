@@ -1,0 +1,97 @@
+{
+  "timestamp": "2026-02-24T07:21:49Z",
+  "version": "0.2.0",
+  "results": [
+    {
+      "name": "T1-a: invoke 成功",
+      "status": "PASS",
+      "detail": "{'stdout': 'Result: 42\\n', 'stderr': '', 'exit_code': 0}"
+    },
+    {
+      "name": "T1-b: stdout 包含結果",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "T1-c: web_search 有結果",
+      "status": "PASS",
+      "detail": "count=0"
+    },
+    {
+      "name": "T2-a: Session 建立",
+      "status": "PASS",
+      "detail": "id=1"
+    },
+    {
+      "name": "T2-b: Session 狀態 active",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "T2-c: Task 建立",
+      "status": "PASS",
+      "detail": "id=1"
+    },
+    {
+      "name": "T2-d: Task 狀態 assigned",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "T2-e: Task 關閉",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "T2-f: Session 暫停",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "T2-g: Session 恢復",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "T2-h: Session 結束",
+      "status": "PASS",
+      "detail": "OK"
+    },
+    {
+      "name": "T3-a: Goal 建立",
+      "status": "PASS",
+      "detail": "id=1"
+    },
+    {
+      "name": "T3-b: 進度更新 50%",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "T3-c: 完成時自動 completed",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "T3-d: list_all 不為空",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "T4-a: Interval 排程新增",
+      "status": "PASS",
+      "detail": "{'id': 1, 'name': 'verify-test-job', 'status': 'scheduled'}"
+    },
+    {
+      "name": "T4-b: 排程清單包含工作",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "T4-c: 排程移除後 disabled",
+      "status": "PASS",
+      "detail": ""
+    }
+  ],
+  "summary": "18/18"
+}
