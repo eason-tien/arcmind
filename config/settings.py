@@ -62,6 +62,13 @@ class Settings(BaseSettings):
     ollama_enabled: bool = Field(default=False, alias="OLLAMA_ENABLED")
     ollama_default_model: str = Field(default="llama3.2", alias="OLLAMA_DEFAULT_MODEL")
 
+    # ── OLLAMA 遠端模型（LAN PC）────────────────────────────────
+    ollama_remote_enabled: bool = Field(default=False, alias="OLLAMA_REMOTE_ENABLED")
+    ollama_remote_base_url: str = Field(
+        default="http://192.168.1.151:11434/v1", alias="OLLAMA_REMOTE_BASE_URL"
+    )
+    ollama_remote_default_model: str = Field(default="qwen3:14b", alias="OLLAMA_REMOTE_DEFAULT_MODEL")
+
     # ── Custom OpenAI-compatible Endpoint ─────────────────────
     # 可接入 LM Studio / Together AI / Perplexity / DeepSeek 等
     custom_model_base_url: str = Field(default="", alias="CUSTOM_MODEL_BASE_URL")
@@ -119,6 +126,8 @@ class Settings(BaseSettings):
             providers.append("mistral")
         if self.ollama_enabled:
             providers.append("ollama")
+        if self.ollama_remote_enabled:
+            providers.append("ollama_remote")
         if self.custom_model_base_url:
             providers.append("custom")
         return providers

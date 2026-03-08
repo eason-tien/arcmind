@@ -1,7 +1,7 @@
 # ArcMind 多 Provider 模型路由規則
-# 版本 2.1 — MAIN: MiniMax-M2.5, Fallback: OLLAMA
+# 版本 2.2 — MAIN: MiniMax M2.5, 本地 Ollama, 远程 Ollama
 
-version: "2.1"
+version: "2.2"
 
 # ── MAIN 模型（MiniMax M2.5）──
 default: custom:MiniMax-M2.5
@@ -18,10 +18,15 @@ task_type_rules:
     model: custom:MiniMax-M2.5
     max_tokens: 2048
 
-  # 本地模型優先（隱私敏感任務）
+  # 本地 Ollama（隱私敏感任務）
   - match: [local_only, private]
     model: ollama:qwen3:8b
     max_tokens: 4096
+
+  # 远程 Ollama (192.168.1.151) - 大模型任務
+  - match: [large_model, coding, reasoning]
+    model: ollama:qwen3:14b@192.168.1.151
+    max_tokens: 8192
 
 # 成本預算路由
 budget_rules:
@@ -38,3 +43,4 @@ budget_rules:
 fallback_chain:
   - custom:MiniMax-M2.5
   - ollama:qwen3:8b
+  - ollama:qwen3:14b@192.168.1.151
