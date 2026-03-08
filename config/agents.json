@@ -31,15 +31,15 @@
     {
       "id": "analysis",
       "name": "Analysis Agent",
-      "model": "ollama:qwen2.5:14b",
-      "purpose": "數據分析 + 文件摘要",
+      "model": "nvidia:meta/llama-3.1-70b-instruct",
+      "purpose": "數據分析 + 文件摘要 (NVIDIA NIM 免费 70B)",
       "capabilities": [
         "analysis",
         "summarize",
         "data",
         "report"
       ],
-      "system_prompt": "你是一個數據分析 Agent。專注於分析數據、生成報告和摘要文件。",
+      "system_prompt": "你是一個專業的數據分析 Agent。專注於分析數據、生成報告和摘要文件。使用深度推理提供高質量的分析結果。",
       "enabled": true
     },
     {
