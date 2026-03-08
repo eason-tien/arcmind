@@ -128,9 +128,16 @@ class Watchdog:
         # 0. 先確認是否為真正的故障（排除啟動中的假陽性）
         cause = self._read_crash_cause()
         if cause == "":
-            # 沒有真正的錯誤，可能是啟動中或暫時超時
-            logger.info("[Watchdog] ℹ️ No real error found in stderr, likely startup transient. Skipping repair.")
-            return
+            # err.log 沒有錯誤 — 但 server 可能真的掛了
+            # 等 10 秒後再檢查一次，如果恢復了就跳過
+            logger.info("[Watchdog] ℹ️ No error in stderr, waiting 10s to confirm...")
+            time.sleep(10)
+            if self._check_health():
+                logger.info("[Watchdog] ✅ Server recovered after wait. Skipping repair.")
+                return
+            # Server 確實掛了但沒有 error log → 直接重啟（可能是 OOM / killed）
+            cause = "主 Agent 進程消失（無 error log，可能被系統 kill）"
+            logger.warning("[Watchdog] ⚠️ Server still down with empty stderr. Force restarting.")
 
         logger.warning("[Watchdog] 🔧 Triggering Repair Agent...")
 
