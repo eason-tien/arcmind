@@ -264,3 +264,67 @@ skills:
       - name: task_id
         type: string
         description: 任务ID
+
+  - name: antigravity_bridge
+    module: antigravity_bridge.py
+    handler: run
+    version: "1.0"
+    description: 通过文件系统控制 Antigravity 桌面应用 — 零 API Key，零封号风险
+    permissions: [filesystem]
+    tags: [antigravity, ai, bridge, desktop, control]
+    governor_required: false
+    inputs:
+      - name: task
+        type: string
+        required: true
+        description: 任务描述（将写入 task.md）
+      - name: conversation_id
+        type: string
+        required: false
+        description: 指定对话ID（默认使用最新对话）
+      - name: timeout
+        type: int
+        required: false
+        default: 300
+        description: 等待结果超时秒数（默认 5 分钟）
+    outputs:
+      - name: result
+        type: string
+        description: Antigravity 处理结果
+      - name: conversation_id
+        type: string
+        description: 使用的对话ID
+
+  - name: antigravity_status
+    module: antigravity_bridge.py
+    handler: check_status
+    version: "1.0"
+    description: 检查 Antigravity 运行状态和对话列表
+    permissions: [filesystem]
+    tags: [antigravity, status, monitor]
+    governor_required: false
+    inputs: []
+    outputs:
+      - name: running
+        type: bool
+        description: Antigravity 是否在运行
+      - name: latest_conversation
+        type: string
+        description: 最新对话ID
+      - name: brain_dir_exists
+        type: bool
+        description: brain 目录是否存在
+
+  - name: antigravity_conversations
+    module: antigravity_bridge.py
+    handler: get_conversations
+    version: "1.0"
+    description: 获取所有 Antigravity 对话列表
+    permissions: [filesystem]
+    tags: [antigravity, conversation, list]
+    governor_required: false
+    inputs: []
+    outputs:
+      - name: conversations
+        type: list
+        description: 对话列表
