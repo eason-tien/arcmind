@@ -125,6 +125,13 @@ class Watchdog:
             time.sleep(600)  # Wait 10 min before trying again
             return
 
+        # 0. 先確認是否為真正的故障（排除啟動中的假陽性）
+        cause = self._read_crash_cause()
+        if cause == "":
+            # 沒有真正的錯誤，可能是啟動中或暫時超時
+            logger.info("[Watchdog] ℹ️ No real error found in stderr, likely startup transient. Skipping repair.")
+            return
+
         logger.warning("[Watchdog] 🔧 Triggering Repair Agent...")
 
         # 1. Run diagnostics
@@ -138,8 +145,21 @@ class Watchdog:
             logger.error("[Watchdog] Repair Agent failed: %s", e)
             result = None
 
-        # 2. Log incident
-        cause = self._read_crash_cause()
+        # 2. 如果所有診斷通過且沒有真正的錯誤，再次檢查健康
+        if result and not result.repaired:
+            # 給主 Agent 一次恢復機會（可能只是短暫超時）
+            time.sleep(5)
+            if self._check_health():
+                logger.info("[Watchdog] ✅ Agent recovered on its own after diagnostics. No restart needed.")
+                try:
+                    from ops.incident_logger import log_incident
+                    log_incident(cause=cause, action=result.summary,
+                                 result="Agent 自行恢復，無需重啟", repaired=True)
+                except Exception:
+                    pass
+                return
+
+        # 3. Log incident
         action = result.summary if result else "Repair Agent 執行失敗"
         repaired = result.repaired if result else False
 
@@ -154,7 +174,7 @@ class Watchdog:
         except Exception as e:
             logger.error("[Watchdog] Incident logging failed: %s", e)
 
-        # 3. Restart main agent via launchctl
+        # 4. Restart main agent via launchctl
         logger.info("[Watchdog] 🔄 Restarting main agent...")
         try:
             plist = os.path.expanduser("~/Library/LaunchAgents/com.arcmind.server.plist")
@@ -167,7 +187,7 @@ class Watchdog:
         except Exception as e:
             logger.error("[Watchdog] Restart failed: %s", e)
 
-        # 4. Send Telegram notification
+        # 5. Send Telegram notification
         self._send_telegram_alert(
             f"🔧 ArcMind 故障自愈\n"
             f"原因: {cause[:100]}\n"
@@ -178,19 +198,44 @@ class Watchdog:
         self._repair_timestamps.append(now)
         self._repair_count += 1
 
+    # Uvicorn / httpx 正常運行時也會寫入 stderr 的行（這些不算錯誤）
+    _BENIGN_PATTERNS = [
+        "INFO:",
+        "Uvicorn running on",
+        "Started server process",
+        "Waiting for application startup",
+        "Application startup complete",
+        "Press CTRL+C to quit",
+        "HTTP Request: POST",
+        "HTTP Request: GET",
+        "lifespan",
+    ]
+
     def _read_crash_cause(self) -> str:
-        """Read the last error from stderr log."""
+        """Read the last REAL error from stderr log (ignoring INFO/startup lines)."""
         err_log = _ARCMIND_DIR / "logs" / "arcmind_err.log"
         try:
             if err_log.exists():
                 content = err_log.read_text(encoding="utf-8", errors="replace")
-                # Get last 20 lines
-                lines = content.strip().split("\n")[-20:]
-                # Look for traceback
-                for i, line in enumerate(lines):
+                lines = content.strip().split("\n")[-30:]
+
+                # 過濾掉正常的 INFO / startup 行
+                error_lines = [
+                    l for l in lines
+                    if not any(bp in l for bp in self._BENIGN_PATTERNS)
+                    and l.strip()
+                ]
+
+                if not error_lines:
+                    # 全部都是正常行，沒有真正的錯誤
+                    return ""
+
+                # 找 Traceback
+                for i, line in enumerate(error_lines):
                     if "Traceback" in line or "Error" in line or "Exception" in line:
-                        return "\n".join(lines[i:])[:300]
-                return lines[-1][:200] if lines else "Unknown crash"
+                        return "\n".join(error_lines[i:])[:300]
+
+                return error_lines[-1][:200]
         except Exception:
             pass
         return "主 Agent 無回應（健康檢查連續失敗）"
