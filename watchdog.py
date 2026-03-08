@@ -145,12 +145,12 @@ class Watchdog:
             logger.error("[Watchdog] Repair Agent failed: %s", e)
             result = None
 
-        # 2. 如果所有診斷通過且沒有真正的錯誤，再次檢查健康
+        # 2. 如果基本診斷無法修復，啟動 Smart Repair（Web 搜尋 + 自學習）
         if result and not result.repaired:
-            # 給主 Agent 一次恢復機會（可能只是短暫超時）
+            # 先給主 Agent 一次恢復機會
             time.sleep(5)
             if self._check_health():
-                logger.info("[Watchdog] ✅ Agent recovered on its own after diagnostics. No restart needed.")
+                logger.info("[Watchdog] ✅ Agent recovered on its own. No restart needed.")
                 try:
                     from ops.incident_logger import log_incident
                     log_incident(cause=cause, action=result.summary,
@@ -159,16 +159,45 @@ class Watchdog:
                     pass
                 return
 
-        # 3. Log incident
-        action = result.summary if result else "Repair Agent 執行失敗"
+            # 基本修復不夠 → Smart Repair（Web 搜尋學習）
+            logger.info("[Watchdog] 🧠 Basic repair insufficient, invoking Smart Repair...")
+            try:
+                from ops.smart_repair import smart_repair as do_smart_repair
+                sr_result = do_smart_repair()
+                logger.info("[Watchdog] Smart Repair status: %s", sr_result.get("status"))
+
+                if sr_result.get("status") == "repaired":
+                    action = f"Smart Repair 修復: {sr_result.get('fix', {}).get('fix_action', '?')}"
+                    result.repaired = True
+                    logger.info("[Watchdog] ✅ Smart Repair succeeded: %s", action)
+                elif sr_result.get("status") == "suggestion":
+                    fix_info = sr_result.get("fix", {})
+                    suggestions = fix_info.get("web_suggestions", [])
+                    action = f"Smart Repair 建議: {fix_info.get('fix_action', '?')}"
+                    if suggestions:
+                        logger.info("[Watchdog] 💡 Web suggestions found:")
+                        for s in suggestions[:3]:
+                            if isinstance(s, dict):
+                                logger.info("  → %s", s.get("title", s.get("body", "")[:80]))
+                            else:
+                                logger.info("  → %s", str(s)[:80])
+                else:
+                    action = f"Smart Repair: {sr_result.get('message', 'no fix found')}"
+            except Exception as e:
+                logger.warning("[Watchdog] Smart Repair failed: %s", e)
+                action = result.summary if result else "Repair Agent 執行失敗"
+        else:
+            action = result.summary if result else "Repair Agent 執行失敗"
+
         repaired = result.repaired if result else False
 
+        # 3. Log incident
         try:
             from ops.incident_logger import log_incident
             log_incident(
                 cause=cause,
                 action=action,
-                result="嘗試重啟主 Agent" if repaired or not result else "等待人工介入",
+                result="已修復並重啟" if repaired else "等待人工介入",
                 repaired=repaired,
             )
         except Exception as e:
@@ -188,8 +217,9 @@ class Watchdog:
             logger.error("[Watchdog] Restart failed: %s", e)
 
         # 5. Send Telegram notification
+        smart_note = " (🧠 Smart Repair 已搜尋)" if "Smart Repair" in action else ""
         self._send_telegram_alert(
-            f"🔧 ArcMind 故障自愈\n"
+            f"🔧 ArcMind 故障自愈{smart_note}\n"
             f"原因: {cause[:100]}\n"
             f"修復: {action[:100]}\n"
             f"狀態: {'已修復並重啟' if repaired else '已重啟（可能需要關注）'}"
