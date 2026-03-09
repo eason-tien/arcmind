@@ -3,6 +3,8 @@ Agent 控制 API：執行指令、查詢狀態
 """
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Any
@@ -34,9 +36,10 @@ class RunResponse(BaseModel):
 
 
 @router.post("/run", response_model=RunResponse)
-def run_command(req: RunRequest):
+async def run_command(req: RunRequest):
     """
     主入口：使用者下達指令，走完整 OODA 主循環。
+    main_loop.run() 是同步阻塞操作，透過 to_thread 避免阻塞 FastAPI event loop。
     """
     from loop.main_loop import main_loop, LoopInput
 
@@ -50,7 +53,7 @@ def run_command(req: RunRequest):
         task_type=req.task_type,
         budget=req.budget,
     )
-    result = main_loop.run(inp)
+    result = await asyncio.to_thread(main_loop.run, inp)
     return RunResponse(
         success=result.success,
         task_id=result.task_id,

@@ -30,6 +30,7 @@ engine = create_engine(
 def set_sqlite_pragma(conn, _):
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=5000")
 
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
