@@ -307,12 +307,14 @@ def create_app() -> FastAPI:
     from api.routes.cron_routes import router as cron_router
     from api.routes.session_routes import router as session_router
     from api.routes.github_routes import router as github_router
+    from api.routes.webhook_routes import router as webhook_router
 
     app.include_router(agent_router, prefix="/v1/agent", tags=["agent"])
     app.include_router(skill_router, prefix="/v1/skills", tags=["skills"])
     app.include_router(cron_router,  prefix="/v1/cron",   tags=["cron"])
     app.include_router(session_router, prefix="/v1",      tags=["sessions"])
     app.include_router(github_router, prefix="/v1/github", tags=["github"])
+    app.include_router(webhook_router, prefix="/v1/webhook", tags=["webhook"])
 
     # ── Gateway (WebSocket + Chat) ────────────────────────────────────────
     from gateway.server import router as gateway_router

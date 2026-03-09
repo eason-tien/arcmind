@@ -238,6 +238,72 @@ async def handle_iamp_bridge(event: Event) -> None:
         ))
 
 
+# ── Webhook Handler ──────────────────────────────────────────────────────────
+
+@event_bus.on(EventType.WEBHOOK)
+async def handle_webhook(event: Event) -> None:
+    """
+    外部 Webhook 回調 → 走 OODA Loop 處理。
+    payload 預期：
+      - source: str (webhook source identifier)
+      - data: dict (original webhook payload)
+      - headers: dict (X-* headers)
+    """
+    payload = event.payload
+    source = payload.get("source", "external")
+    data = payload.get("data", {})
+
+    logger.info("[Handler:webhook] source=%s", source)
+
+    # Extract skill hint from payload if present
+    skill_hint = None
+    if isinstance(data, dict):
+        skill_hint = data.get("skill") or data.get("skill_name")
+
+    # Build command from webhook data
+    command_parts = [f"[WEBHOOK:{source}]"]
+    if isinstance(data, dict):
+        action = data.get("action") or data.get("type") or data.get("event")
+        if action:
+            command_parts.append(f"Action: {action}")
+        message = data.get("message") or data.get("text") or data.get("command")
+        if message:
+            command_parts.append(str(message)[:500])
+        else:
+            command_parts.append(f"Process webhook data: {str(data)[:300]}")
+    else:
+        command_parts.append(f"Process webhook: {str(data)[:300]}")
+
+    # Governor audit
+    try:
+        from foundation.mgis_client import mgis
+        audit = mgis.audit(
+            action=f"webhook_process:{source}",
+            context={"source": source, "data_keys": list(data.keys()) if isinstance(data, dict) else []},
+        )
+        if not audit.get("approved", False):
+            logger.warning("[Handler:webhook] %s blocked by Governor: %s",
+                           source, audit.get("reason"))
+            return
+    except Exception as e:
+        logger.warning("[Handler:webhook] Governor check failed (proceeding): %s", e)
+
+    # Run via OODA Loop
+    try:
+        from loop.main_loop import main_loop, LoopInput
+        inp = LoopInput(
+            command=" ".join(command_parts),
+            source="webhook",
+            skill_hint=skill_hint,
+            context={"webhook_source": source, "webhook_data": data},
+        )
+        result = await asyncio.to_thread(main_loop.run, inp)
+        logger.info("[Handler:webhook] %s done: success=%s elapsed=%.2fs",
+                    source, result.success, result.elapsed_s)
+    except Exception as e:
+        logger.error("[Handler:webhook] %s failed: %s", source, e)
+
+
 # ── Task Created Handler (for metrics/logging) ──────────────────────────────
 
 @event_bus.on(EventType.TASK_CREATED)
