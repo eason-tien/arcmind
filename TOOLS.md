@@ -4,7 +4,7 @@
 
 ---
 
-## 一、可用工具（16 項）
+## 一、可用工具（21 項）
 
 ### 核心工具
 
@@ -40,6 +40,58 @@
 - **可用 Agent**: `search`(搜尋), `code`(寫代碼), `analysis`(分析), `qa`(測試), `devops`(部署), `pm`(需求), `windows`(遠端)
 - **任務執行**：委派後任務進入佇列，由 Worker Heartbeat（每60秒）自動在背景執行
 - **結果追蹤**：用 `agent_inbox` 查看完成/失敗/升級通知
+
+### Agent 模板招聘工具（v0.7.0 新增）
+
+| 工具 | 用途 | 範例 |
+|------|------|------|
+| `hire_agent` | 從模板庫聘用 Agent | `{"template_id": "security"}` 或 `{"template_id": "frontend", "custom_model": "claude"}` |
+| `fire_agent` | 解僱非核心 Agent | `{"agent_id": "security"}` |
+| `list_agent_templates` | 列出可用模板及聘用狀態 | `{}` |
+
+#### 模板招聘使用指南
+- **按需聘用**：模板庫的 Agent 不預裝，CEO 在需要時才聘用
+- **何時聘用**：當現有員工無法處理某類任務時（例如安全掃描、前端開發、翻譯），系統會自動建議可聘用的模板
+- **可聘模板**：
+
+| Template ID | 職稱 | 專長 | 分類 |
+|-------------|------|------|------|
+| `security` | Security Engineer | 安全掃描、漏洞評估、滲透測試 | engineering |
+| `data_engineer` | Data Engineer | ETL 管線、資料庫管理、數據清洗 | engineering |
+| `frontend` | Frontend Engineer | React/Vue/CSS/HTML 前端開發 | engineering |
+| `designer` | UI/UX Designer | UI/UX 設計、原型圖、設計系統 | design |
+| `copywriter` | Copywriter | 文案撰寫、SEO 內容、行銷文案 | marketing |
+| `financial` | Financial Analyst | 財務分析、預算規劃、投資評估 | business |
+| `translator` | Translator | 多語言翻譯（中英日韓） | operations |
+| `sre` | SRE Engineer | 事件響應、SLO 管理、可靠性工程 | engineering |
+
+- **解僱保護**：核心員工（main/search/analysis/code/qa/devops/pm/windows）不可解僱
+- **自訂模型**：聘用時可透過 `custom_model` 指定模型，覆蓋模板預設
+
+### Agent 交接工具（v0.7.0 新增）
+
+| 工具 | 用途 | 範例 |
+|------|------|------|
+| `agent_handoff` | Agent 間任務交接 | `{"from_agent": "search", "to_agent": "code", "command": "根據調研結果寫代碼", "reason": "調研完成，交給開發"}` |
+
+#### 交接使用指南
+- **何時使用**：Agent 完成部分工作後需要另一個 Agent 接手（例如調研完 → 交給 code 開發）
+- **上下文傳遞**：透過 `context` 欄位傳遞先前結果，接收方能看到完整歷史
+- **SharedMemory**：交接時自動寫入共享記憶，確保接收方能讀取前置 Agent 的所有輸出
+- **IAMP 通知**：交接訊息同時透過 IAMP MessageBus 發送，CEO 可在 `agent_inbox` 中追蹤
+
+### Webhook 工具（v0.7.0 新增）
+
+| 工具 | 用途 | 範例 |
+|------|------|------|
+| `send_webhook` | 發送 Webhook 到外部服務 | `{"url": "https://n8n.example.com/webhook/abc", "payload": {"event": "task_done", "result": "成功"}}` |
+
+#### Webhook 使用指南
+- **主動通知**：任務完成後通知外部系統（N8N、Zapier、Slack Webhook 等）
+- **被動接收**：外部服務可 POST 到 `/v1/webhook` 或 `/v1/webhook/{source}` 觸發 ArcMind 事件
+  - 驗證：`X-Webhook-Secret` header（可選）
+  - Payload 中帶 `skill` 欄位可提示使用特定 skill 處理
+- **支援方法**：POST / PUT / PATCH
 
 ### Skill 調用工具
 
@@ -81,14 +133,27 @@
 - `route(command)` — 單一 Agent 路由（keyword → capability 匹配）
 - `route_multi(command)` — 多 Agent Pipeline 路由（偵測「先…再…」等信號）
 - `execute(match, command)` — 用子 Agent 的 model + system_prompt 執行
-- `execute_plan(plan, command)` — 串行多步驟，步驟間傳遞 context
+- `execute_plan(plan, command)` — 串行多步驟，步驟間傳遞 context + **Pipeline 觀測事件**
+- **Hire Suggestion** — 無匹配時自動推薦可聘用模板（`DelegationMatch.hire_suggestion`）
 
 #### IAMP 通訊 (`runtime/iamp.py`)
-- **MessageBus** — Agent 間結構化訊息（task_assign / task_complete / task_escalate / handoff）
+- **MessageBus** — Agent 間結構化訊息（task_assign / task_complete / task_escalate / **handoff**）
 - **SharedMemory** — Pipeline 步驟間共享工作記憶（自動傳遞前步結果）
 - CEO 可用 `agent_inbox` 工具查看子 Agent 回報
 
-#### Agent 團隊 (`config/agents.json`)
+#### EventBus 事件驅動 (`runtime/event_bus.py`)
+- **EventType.WEBHOOK** — 外部 Webhook 回調 → OODA Loop 處理
+- **EventType.AGENT_HANDOFF** — Agent 任務交接事件
+- **Dead Letter Retry** — 失敗事件自動進入 Dead Letter Queue，可重試
+- Pipeline 觀測事件：`step_start` / `step_complete` / `step_failed` / `pipeline_complete`
+
+#### Agent 模板招聘 (`runtime/agent_templates.py`)
+- **TemplateManager** — CEO 按需從模板庫聘用/解僱 Agent
+- 8 個可用模板（security / data_engineer / frontend / designer / copywriter / financial / translator / sre）
+- 聘用後自動註冊到 `agent_registry`，可接受 `delegate_task` 委派
+- CEO 可用 `list_agent_templates` 查看可聘模板，`hire_agent` / `fire_agent` 操作
+
+#### Agent 團隊 (`config/agents.json`) — 核心員工
 | Agent | 用途 | Model |
 |-------|------|-------|
 | CEO (main) | 調度決策 | MiniMax-M2.5 |
@@ -99,6 +164,18 @@
 | devops | 部署 | NVIDIA 70B |
 | pm | 需求 | NVIDIA 70B |
 | windows | 遠端 | Claude |
+
+#### 可聘模板 (`config/agent_templates.json`) — 按需招聘
+| Template | 職稱 | Model | 分類 |
+|----------|------|-------|------|
+| security | Security Engineer | Claude | engineering |
+| data_engineer | Data Engineer | NVIDIA 70B | engineering |
+| frontend | Frontend Engineer | Claude | engineering |
+| designer | UI/UX Designer | NVIDIA 70B | design |
+| copywriter | Copywriter | NVIDIA 70B | marketing |
+| financial | Financial Analyst | NVIDIA 70B | business |
+| translator | Translator | NVIDIA 70B | operations |
+| sre | SRE Engineer | Claude | engineering |
 
 ### 3. 多 Provider 模型路由 (`runtime/model_router.py`)
 - 支援：MiniMax / Ollama / Anthropic / OpenAI / Google / Groq / Mistral
@@ -138,6 +215,8 @@
 - **Telegram**：文字 + 語音訊息 bot
 - **REST API**：POST `/v1/chat`
 - **WebSocket**：`/ws`（文字）+ `/ws/voice`（即時語音）
+- **Webhook 接收**：POST `/v1/webhook` 或 `/v1/webhook/{source}`（N8N / Zapier / 自定義回調）
+- **GitHub Webhook**：POST `/v1/github/webhook`（Push / PR / Issues / CI 通知）
 - 所有 channel 由 Supervisor 統一管理（自動重連）
 
 ### 8. 語音對話 (`channels/voice.py`)

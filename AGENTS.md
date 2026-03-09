@@ -30,7 +30,7 @@
 - **非同步非阻塞**：把任務發包給子員工後，任務會在背景排程器（Heartbeat）裡默默由另一套低成本的微型 Agent 幫你做完。你只需要回覆使用者「我已經交派給特定部門處理」即可。
 - **多 Agent 協作**：複雜任務可使用 `delegate_multi` 建立 Pipeline，讓多個 Agent 串行協作（如：先調研 → 再開發 → 再測試）。
 
-#### 子員工名單 (`assignee`)
+#### 核心員工名單 (`assignee`) — 預裝
 | Agent ID | 職稱 | 專長 |
 |----------|------|------|
 | `search` | 搜尋專員 | 網路搜尋、資料彙整、新聞追蹤 |
@@ -41,11 +41,32 @@
 | `pm` | 產品經理 | 需求分析、任務拆解、優先級排序 |
 | `windows` | Windows 工程師 | 遠端 Windows PC 操作 |
 
+#### 可聘用模板 — 按需招聘（v0.7.0）
+| Template ID | 職稱 | 專長 |
+|-------------|------|------|
+| `security` | Security Engineer | 安全掃描、漏洞評估、滲透測試 |
+| `data_engineer` | Data Engineer | ETL 管線、資料庫管理、數據清洗 |
+| `frontend` | Frontend Engineer | React/Vue/CSS/HTML 前端開發 |
+| `designer` | UI/UX Designer | UI/UX 設計、原型圖、設計系統 |
+| `copywriter` | Copywriter | 文案撰寫、SEO 內容、行銷文案 |
+| `financial` | Financial Analyst | 財務分析、預算規劃、投資評估 |
+| `translator` | Translator | 多語言翻譯（中英日韓） |
+| `sre` | SRE Engineer | 事件響應、SLO 管理、可靠性工程 |
+
+**招聘流程**：
+1. `list_agent_templates` — 查看可用模板
+2. `hire_agent(template_id="security")` — 聘用（可選 `custom_model`）
+3. 聘用後即可用 `delegate_task(assignee="security", ...)` 委派
+4. `fire_agent(agent_id="security")` — 不需要時解僱（核心員工不可解僱）
+
+**自動建議**：當現有 Agent 無法處理某任務時，Delegator 會自動推薦可聘用的模板，CEO 決定是否聘用。
+
 #### 委派操作
 - **單一委派**: `agent_delegation` with `operation: "delegate"`
 - **多 Agent Pipeline**: `agent_delegation` with `operation: "delegate_multi"` + `steps: [...]`
 - **任務升級**: `agent_delegation` with `operation: "escalate"`（sub-agent 超出能力時回報 CEO）
 - **任務交接**: `agent_delegation` with `operation: "handoff"`（Agent 間中途交接）
+- **Agent Handoff（工具）**: `agent_handoff(from_agent="search", to_agent="code", command="...", reason="...")` — 直接工具調用，保留上下文
 
 #### 通訊協議 (IAMP)
 所有 Agent 間通訊透過 Inter-Agent Message Protocol (IAMP) 進行：
@@ -53,8 +74,13 @@
 - `task_complete` — 回報完成
 - `task_escalate` — 升級至 CEO
 - `info_request` / `info_response` — 資訊請求
-- `handoff` — 任務交接
+- `handoff` — 任務交接（v0.7.0 新增 EventBus AGENT_HANDOFF 事件 + SharedMemory 上下文傳遞）
 - 每個 Pipeline 有共享工作記憶 (SharedMemory)，步驟間自動傳遞 context
+
+#### Webhook 事件驅動（v0.7.0）
+- **接收 Webhook**：外部服務（N8N、Zapier）POST 到 `/v1/webhook/{source}`，自動走 OODA Loop 處理
+- **發送 Webhook**：使用 `send_webhook` 工具主動通知外部服務
+- 收到 Webhook 後由 EventBus → `handle_webhook` handler → Governor 審計 → OODA Loop 執行
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
