@@ -4,7 +4,23 @@ All notable changes to ArcMind will be documented in this file.
 
 ## [0.5.0] — 2026-03-09
 
-### Zero-Human Company Phase 1 — Agent Collaboration Infrastructure
+### Phase 3 — System Integration
+
+- **Iteration Engine v2** — Fixed roundtable `list_agents()` dict-vs-object bugs, added `get_default()`, new QA/DevOps/PM agents participate in weekly meetings, IAMP roundtable message logging.
+- **Gateway Commands** — `/agents` shows full agent roster, `/agent_stats` shows IAMP communication stats, `/health` and `/version` updated to v0.5.0.
+- **Worker Heartbeat CRON** — Auto-registered 60s interval heartbeat for processing delegated tasks.
+- **Agent-Aware `/help`** — Added agent management section to help text.
+
+### Phase 2 — OODA Loop Multi-Agent Integration
+
+- **OODA Observe** — Agent status monitoring, message bus stats awareness.
+- **OODA Orient** — Delegation history injection (recent completions/escalations).
+- **OODA Decide** — Multi-agent pipeline routing via `route_multi()`.
+- **OODA Act** — `_try_multi_agent()` for automatic pipeline execution.
+- **OODA Learn** — Agent performance tracking via IAMP `STATUS_REPORT`.
+- **Bug Fix** — `iteration_engine._collect_agent_usage()` dict access fix.
+
+### Phase 1 — Agent Collaboration Infrastructure
 
 - **Agent Registry v2** — Loads agents from `agents.json` with capability-based lookup, dynamic registration, runtime save. Fixes `find_by_capability()` bug.
 - **New Agent Roles** — Added QA Agent, DevOps Agent, Product Manager to the zero-human company roster (8 agents total).

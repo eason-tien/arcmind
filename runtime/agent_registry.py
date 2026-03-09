@@ -148,6 +148,10 @@ class AgentRegistry:
                 return a
         return None
 
+    def get_default(self) -> Optional[AgentPersona]:
+        """Get the default (main/CEO) agent."""
+        return self._agents.get("main")
+
     def find_by_capability(self, capability: str) -> List[AgentPersona]:
         """Find all enabled agents that have the given capability."""
         results = []

@@ -75,6 +75,18 @@ async def lifespan(app: FastAPI):
                 governor_required=False,
             )
             logger.info("📅 Registered CRON: env-scan (Every 12h)")
+
+        # Worker Heartbeat: 每 60 秒處理委派任務
+        if "worker-heartbeat" not in existing_jobs:
+            cron_system.add_interval(
+                name="worker-heartbeat",
+                seconds=60,
+                skill_name="worker_heartbeat",
+                input_data={},
+                governor_required=False,
+            )
+            logger.info("📅 Registered CRON: worker-heartbeat (Every 60s)")
+
     except Exception as e:
         logger.warning("Failed to register iteration CRONs: %s", e)
 

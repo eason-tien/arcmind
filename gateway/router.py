@@ -156,6 +156,7 @@ _SYSTEM_COMMANDS = {
     "/cancel", "/status", "/help", "/reset", "/sessions",
     "/health", "/skills", "/models", "/version",
     "/install", "/remove_skill",
+    "/agents", "/agent_stats",
 }
 
 

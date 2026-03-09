@@ -238,6 +238,9 @@ def run_agent_roundtable(intel: dict) -> dict:
     召開多 Agent 圓桌會議。
     每個 Agent 從自己的專業角度評估系統情報，提出改進建議。
     MAIN Agent 最後綜合所有建議。
+
+    v0.5.0: 使用 list_enabled() 取得 AgentPersona 物件（非 dict），
+    新增 QA / DevOps / PM 角色，透過 IAMP 記錄會議。
     """
     from runtime.tool_loop import agentic_complete
     from runtime.agent_registry import agent_registry
@@ -247,49 +250,76 @@ def run_agent_roundtable(intel: dict) -> dict:
         intel_text = intel_text[:8000] + "\n... (truncated)"
 
     perspectives: dict[str, str] = {}
-    agents = agent_registry.list_agents()
 
-    # Each sub-agent reviews from its perspective
+    # Agent-specific review prompts (keyed by agent id)
+    prompt_map = {
+        "code": (
+            f"你是 ArcMind 的軟體工程師 (Code Agent)。以下是過去一週的系統運行報告：\n\n{intel_text}\n\n"
+            "請從代碼品質和可靠性的角度分析：\n"
+            "1. 最常見的錯誤模式及根因\n"
+            "2. 代碼改進建議（bug修復、重構、新功能）\n"
+            "3. 本週最緊急需要修的問題\n"
+            "用繁中回答，簡潔扼要，每點不超過2行。"
+        ),
+        "analysis": (
+            f"你是 ArcMind 的數據分析師 (Analysis Agent)。以下是過去一週的系統運行報告：\n\n{intel_text}\n\n"
+            "請從數據和效能的角度分析：\n"
+            "1. 任務成功率趨勢及瓶頸\n"
+            "2. 資源使用效率\n"
+            "3. 需要優化的績效指標\n"
+            "用繁中回答，簡潔扼要，每點不超過2行。"
+        ),
+        "search": (
+            f"你是 ArcMind 的搜尋專員 (Search Agent)。以下是過去一週的系統運行報告：\n\n{intel_text}\n\n"
+            "請從外部資訊和工具的角度建議：\n"
+            "1. 可以引入的新工具或庫來改善系統\n"
+            "2. 業界最佳實踐參考\n"
+            "3. 安全性和穩定性建議\n"
+            "用繁中回答，簡潔扼要，每點不超過2行。"
+        ),
+        "qa": (
+            f"你是 ArcMind 的 QA 工程師。以下是過去一週的系統運行報告：\n\n{intel_text}\n\n"
+            "請從測試品質的角度分析：\n"
+            "1. 測試覆蓋率薄弱的模組\n"
+            "2. 重複出現的錯誤應補哪些測試\n"
+            "3. 回歸測試建議\n"
+            "用繁中回答，簡潔扼要，每點不超過2行。"
+        ),
+        "devops": (
+            f"你是 ArcMind 的 DevOps 工程師。以下是過去一週的系統運行報告：\n\n{intel_text}\n\n"
+            "請從部署和運維的角度分析：\n"
+            "1. 系統穩定性和可用性\n"
+            "2. CRON 排程健康狀態\n"
+            "3. 監控和告警改進建議\n"
+            "用繁中回答，簡潔扼要，每點不超過2行。"
+        ),
+        "pm": (
+            f"你是 ArcMind 的產品經理。以下是過去一週的系統運行報告：\n\n{intel_text}\n\n"
+            "請從產品和用戶的角度分析：\n"
+            "1. 用戶反饋趨勢及關鍵痛點\n"
+            "2. 功能優先級調整建議\n"
+            "3. 下週迭代重點方向\n"
+            "用繁中回答，簡潔扼要，每點不超過2行。"
+        ),
+    }
+
+    # Use list_enabled() to get AgentPersona objects (not dicts)
+    agents = agent_registry.list_enabled()
+
     for agent in agents:
         if agent.id == "main":
             continue  # MAIN summarizes at the end
-
-        prompt_map = {
-            "code": (
-                f"你是 ArcMind 的 Code Agent。以下是過去一週的系統運行報告：\n\n{intel_text}\n\n"
-                "請從代碼品質和可靠性的角度分析：\n"
-                "1. 最常見的錯誤模式及根因\n"
-                "2. 代碼改進建議（bug修復、重構、新功能）\n"
-                "3. 本週最緊急需要修的問題\n"
-                "用繁中回答，簡潔扼要，每點不超過2行。"
-            ),
-            "analysis": (
-                f"你是 ArcMind 的 Analysis Agent。以下是過去一週的系統運行報告：\n\n{intel_text}\n\n"
-                "請從數據和效能的角度分析：\n"
-                "1. 任務成功率趨勢及瓶頸\n"
-                "2. 資源使用效率\n"
-                "3. 需要優化的績效指標\n"
-                "用繁中回答，簡潔扼要，每點不超過2行。"
-            ),
-            "search": (
-                f"你是 ArcMind 的 Search Agent。以下是過去一週的系統運行報告：\n\n{intel_text}\n\n"
-                "請從外部資訊和工具的角度建議：\n"
-                "1. 可以引入的新工具或庫來改善系統\n"
-                "2. 業界最佳實踐參考\n"
-                "3. 安全性和穩定性建議\n"
-                "用繁中回答，簡潔扼要，每點不超過2行。"
-            ),
-        }
 
         prompt = prompt_map.get(agent.id)
         if not prompt:
             continue
 
         try:
-            logger.info("[Roundtable] Consulting agent: %s (%s)", agent.name, agent.model)
+            logger.info("[Roundtable] Consulting agent: %s (%s)",
+                        agent.name, agent.default_model)
             result = agentic_complete(
                 prompt=prompt,
-                model=agent.model,
+                model=agent.default_model,
                 task_type="analysis",
                 budget="medium",
                 max_tokens=1500,
@@ -302,31 +332,59 @@ def run_agent_roundtable(intel: dict) -> dict:
             perspectives[agent.id] = f"（Agent 錯誤: {e}）"
             logger.error("[Roundtable] Agent %s failed: %s", agent.id, e)
 
+    # Record roundtable to IAMP
+    try:
+        from runtime.iamp import message_bus, MessageType
+        for agent_id, review in perspectives.items():
+            message_bus.send(
+                sender=agent_id,
+                receiver="main",
+                msg_type=MessageType.STATUS_REPORT,
+                payload={"review": review[:500]},
+                task_id="weekly_roundtable",
+            )
+    except Exception:
+        pass
+
     # MAIN agent synthesizes all perspectives
     main_agent = agent_registry.get_default()
     synthesis_prompt = (
-        "你是 ArcMind 的主調度 Agent (MAIN)。今天是每週自我迭代會議日。\n"
-        f"以下是各 Agent 對過去一週系統運行的評估：\n\n"
+        "你是 ArcMind 零人類公司的 CEO。今天是每週自我迭代會議日。\n"
+        f"以下是各部門 Agent 對過去一週系統運行的評估：\n\n"
     )
     for agent_id, review in perspectives.items():
         synthesis_prompt += f"### {agent_id.upper()} Agent 評估\n{review}\n\n"
+
+    # Inject IAMP stats
+    iamp_summary = ""
+    try:
+        from runtime.iamp import message_bus
+        stats = message_bus.stats()
+        iamp_summary = (
+            f"- Agent 通訊總數: {stats.get('total_messages', 0)}\n"
+            f"- 訊息類型分布: {json.dumps(stats.get('by_type', {}), ensure_ascii=False)}\n"
+        )
+    except Exception:
+        pass
 
     synthesis_prompt += (
         f"### 系統關鍵指標\n"
         f"- 錯誤數: {intel.get('error_summary', {}).get('total_errors', 'N/A')}\n"
         f"- 任務成功率: {intel.get('task_stats', {}).get('success_rate', 'N/A')}%\n"
-        f"- 事故數: {len(intel.get('incidents', []))}\n\n"
+        f"- 事故數: {len(intel.get('incidents', []))}\n"
+        f"{iamp_summary}\n"
         "請綜合所有評估，產出：\n"
         "1. **本週系統健康度評分** (1-10)\n"
         "2. **Top 3 最優先改進目標**（每個包含：目標、原因、具體任務、預期效果）\n"
-        "3. **風險提醒**（任何需要使用者確認的breaking change）\n"
+        "3. **Agent 協作效率評估**（IAMP 通訊健康度、委派成功率）\n"
+        "4. **風險提醒**（任何需要使用者確認的breaking change）\n"
         "用繁中回答，格式清晰。"
     )
 
     try:
         synthesis = agentic_complete(
             prompt=synthesis_prompt,
-            model=main_agent.model if main_agent else None,
+            model=main_agent.default_model if main_agent else None,
             task_type="analysis",
             budget="high",
             max_tokens=3000,

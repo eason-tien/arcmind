@@ -284,6 +284,9 @@ async def _handle_system_command(command: str, ctx: SessionContext) -> str:
             "• `/skills` — 列出已安裝技能\n"
             "• `/install <github_url>` — 從 GitHub 安裝技能\n"
             "• `/remove_skill <name>` — 移除已安裝技能\n\n"
+            "🤖 *Agent 管理*\n"
+            "• `/agents` — 列出所有 Agent 及其狀態\n"
+            "• `/agent_stats` — Agent 通訊統計\n\n"
             "🔧 *系統*\n"
             "• `/health` — 系統健康檢查\n"
             "• `/version` — 版本資訊"
@@ -318,15 +321,52 @@ async def _handle_system_command(command: str, ctx: SessionContext) -> str:
         except Exception as e:
             return f"⚠️ 無法載入模型列表: {e}"
 
+    elif command == "/agents":
+        try:
+            from runtime.agent_registry import agent_registry
+            return agent_registry.format_roster()
+        except Exception as e:
+            return f"Error: {e}"
+
+    elif command == "/agent_stats":
+        try:
+            from runtime.agent_registry import agent_registry
+            from runtime.iamp import message_bus
+            stats = message_bus.stats()
+            agents = agent_registry.list_enabled()
+            lines = [
+                "## Agent Communication Stats",
+                f"Active Agents: {len(agents)}",
+                f"Total Messages: {stats.get('total_messages', 0)}",
+                f"Subscribers: {stats.get('subscribers', 0)}",
+                "",
+                "### By Type",
+            ]
+            for msg_type, count in stats.get("by_type", {}).items():
+                lines.append(f"  {msg_type}: {count}")
+            lines.append("")
+            lines.append("### By Sender")
+            for sender, count in stats.get("by_sender", {}).items():
+                lines.append(f"  {sender}: {count}")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
     elif command == "/health":
+        try:
+            from runtime.agent_registry import agent_registry
+            agent_count = len(agent_registry.list_enabled())
+        except Exception:
+            agent_count = "?"
         return (
             f"💚 ArcMind Gateway 運行中\n"
             f"Sessions: {session_manager.active_count()}\n"
-            f"Version: 0.4.0"
+            f"Agents: {agent_count}\n"
+            f"Version: 0.5.0"
         )
 
     elif command == "/version":
-        return "ArcMind v0.4.0 (Gateway Architecture)"
+        return "ArcMind v0.5.0 (Zero-Human Company)"
 
     elif command.startswith("/install "):
         url = command[len("/install "):].strip()
