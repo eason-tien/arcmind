@@ -154,7 +154,26 @@ class CronSystem:
                  input_data: dict, governor_required: bool) -> None:
         logger.info("Cron trigger: name=%s skill=%s", name, skill_name)
 
-        # Governor 審計
+        # ── Event-Driven 路徑：發佈到 EventBus ──
+        try:
+            from runtime.event_bus import event_bus, Event, EventType, EventPriority
+            event_bus.emit(Event(
+                type=EventType.CRON_TRIGGER,
+                source=f"cron:{name}",
+                payload={
+                    "cron_name": name,
+                    "skill_name": skill_name,
+                    "input_data": input_data,
+                    "governor_required": governor_required,
+                },
+                priority=EventPriority.NORMAL,
+            ))
+            self._update_run(name, success=True)
+            return  # EventBus handler will execute the job
+        except Exception as e:
+            logger.warning("Cron %s EventBus emit failed, falling back to direct: %s", name, e)
+
+        # ── Fallback: 直接執行（EventBus 不可用時） ──
         if governor_required:
             from foundation.mgis_client import mgis
             audit = mgis.audit(
@@ -166,7 +185,6 @@ class CronSystem:
                                name, audit.get("reason"))
                 return
 
-        # 呼叫技能
         from runtime.skill_manager import skill_manager
         try:
             result = skill_manager.invoke(skill_name, input_data)

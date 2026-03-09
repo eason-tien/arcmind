@@ -91,6 +91,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Failed to register iteration CRONs: %s", e)
 
+    # ── EventBus 啟動 (Event-Driven 混合驅動) ──
+    from runtime.event_bus import event_bus
+    from runtime.event_handlers import register_all_handlers
+    register_all_handlers()
+    await event_bus.start()
+    logger.info("⚡ EventBus started (event-driven hybrid mode)")
+
     # Gateway session manager (log active sessions on startup)
     from gateway.session_manager import session_manager
     logger.info("ArcMind Gateway ready. MGIS=%s, Sessions=%d",
@@ -134,6 +141,10 @@ async def lifespan(app: FastAPI):
 
     # ── Shutdown ─────────────────────────────────────────────────────────────
     logger.info("ArcMind shutting down...")
+
+    # 停止 EventBus
+    await event_bus.stop()
+    logger.info("EventBus stopped")
 
     # 停止 Channel Supervisor
     supervisor._shutdown_event.set()  # Signal supervisor to stop
@@ -188,6 +199,7 @@ def create_app() -> FastAPI:
 
         from runtime.model_router import model_router
         mgis_online = mgis.is_online()
+        from runtime.event_bus import event_bus as _eb
         return {
             "status": "ok",
             "version": _arcmind_version,
@@ -198,6 +210,7 @@ def create_app() -> FastAPI:
             "lifecycle": lifecycle.summary(),
             "openclaw_enabled": settings.openclaw_enabled,
             "ai_providers": model_router.list_providers(),
+            "event_bus": _eb.stats(),
         }
 
     @app.get("/mgis/status")

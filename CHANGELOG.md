@@ -2,6 +2,18 @@
 
 All notable changes to ArcMind will be documented in this file.
 
+## [0.6.0] — 2026-03-09
+
+### Event-Driven 混合驅動架構
+
+- **EventBus** (`runtime/event_bus.py`) — Central async event bus with typed events (`EventType`), priority queue processing, dead letter queue, and metrics tracking. Supports both sync `emit()` and async `emit_async()` dispatch.
+- **Event Handlers** (`runtime/event_handlers.py`) — Wires EventBus events into OODA Loop. Handles `cron_trigger` → OODA, `agent_complete` → Lifecycle update, `agent_escalate` → CEO re-route, `system_event` → logging/memory, `iamp_message` → event chain.
+- **IAMP → EventBus Bridge** — All IAMP messages automatically bridged to EventBus as `IAMP_MESSAGE` events, enabling event-driven Agent collaboration.
+- **Cron → EventBus** — Cron triggers now emit `CRON_TRIGGER` events to EventBus (with fallback to direct execution if EventBus unavailable).
+- **OODA Loop Events** — MainLoop emits `TASK_CREATED`, `AGENT_COMPLETE`, `TASK_FAILED` events at lifecycle boundaries for system-wide observability.
+- **Server Integration** — EventBus starts/stops with FastAPI lifespan. `/healthz` now includes EventBus stats.
+- **Hybrid Design** — Synchronous API/WebSocket path preserved (`MainLoop.run()`), async event-driven path added via EventBus handlers. Both paths coexist.
+
 ## [0.5.0] — 2026-03-09
 
 ### Phase 3 — System Integration

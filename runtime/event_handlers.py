@@ -1,0 +1,252 @@
+# -*- coding: utf-8 -*-
+"""
+ArcMind — Event Handlers
+==========================
+Event-Driven 混合驅動的核心接線層。
+將 EventBus 事件路由到 OODA Loop 或直接處理。
+
+Handler 職責：
+  - cron_trigger    → 呼叫 MainLoop（source=cron）
+  - agent_complete  → 更新 Lifecycle + 通知 CEO
+  - agent_escalate  → 升級到 CEO 處理
+  - system_event    → 記錄 + 告警
+  - iamp_message    → 轉發到目標 Agent inbox
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from runtime.event_bus import event_bus, Event, EventType
+
+logger = logging.getLogger("arcmind.event_handlers")
+
+
+# ── Cron Trigger Handler ─────────────────────────────────────────────────────
+
+@event_bus.on(EventType.CRON_TRIGGER)
+async def handle_cron_trigger(event: Event) -> None:
+    """
+    Cron 排程觸發 → 走 OODA Loop。
+    payload 預期：
+      - skill_name: str
+      - input_data: dict
+      - governor_required: bool
+      - cron_name: str
+    """
+    payload = event.payload
+    skill_name = payload.get("skill_name", "")
+    cron_name = payload.get("cron_name", event.source)
+    input_data = payload.get("input_data", {})
+    governor_required = payload.get("governor_required", True)
+
+    logger.info("[Handler:cron] trigger: cron=%s skill=%s", cron_name, skill_name)
+
+    # Governor 審計
+    if governor_required:
+        try:
+            from foundation.mgis_client import mgis
+            audit = mgis.audit(
+                action=f"cron_execute:{skill_name}",
+                context={"cron_name": cron_name, "input_data": input_data},
+            )
+            if not audit.get("approved", False):
+                logger.warning("[Handler:cron] %s blocked by Governor: %s",
+                               cron_name, audit.get("reason"))
+                return
+        except Exception as e:
+            logger.warning("[Handler:cron] Governor check failed (proceeding): %s", e)
+
+    # 走 OODA Loop
+    try:
+        from loop.main_loop import main_loop, LoopInput
+        inp = LoopInput(
+            command=f"[CRON:{cron_name}] Execute skill: {skill_name}",
+            source="cron",
+            skill_hint=skill_name,
+            context={"cron_name": cron_name, **input_data},
+        )
+        result = main_loop.run(inp)
+        logger.info("[Handler:cron] %s done: success=%s elapsed=%.2fs",
+                    cron_name, result.success, result.elapsed_s)
+    except Exception as e:
+        logger.error("[Handler:cron] %s failed: %s", cron_name, e)
+
+
+# ── Agent Complete Handler ───────────────────────────────────────────────────
+
+@event_bus.on(EventType.AGENT_COMPLETE)
+async def handle_agent_complete(event: Event) -> None:
+    """
+    Sub-Agent 完成任務 → 更新 Lifecycle + 通知 CEO。
+    payload 預期：
+      - task_id: int
+      - agent_id: str
+      - output: Any
+      - tokens: int
+    """
+    payload = event.payload
+    task_id = payload.get("task_id")
+    agent_id = payload.get("agent_id", "unknown")
+
+    logger.info("[Handler:agent_complete] agent=%s task=%s", agent_id, task_id)
+
+    # Update lifecycle
+    try:
+        from runtime.lifecycle import lifecycle
+        if task_id:
+            lifecycle.tasks.close(
+                task_id,
+                output_data={"output": str(payload.get("output", ""))[:500]},
+                tokens_used=payload.get("tokens", 0),
+            )
+    except Exception as e:
+        logger.warning("[Handler:agent_complete] lifecycle update failed: %s", e)
+
+    # Notify CEO via IAMP
+    try:
+        from runtime.iamp import message_bus, MessageType
+        message_bus.send(
+            sender=agent_id,
+            receiver="main",
+            msg_type=MessageType.TASK_COMPLETE,
+            payload={
+                "task_id": str(task_id),
+                "output_summary": str(payload.get("output", ""))[:200],
+                "tokens": payload.get("tokens", 0),
+            },
+            task_id=str(task_id) if task_id else None,
+        )
+    except Exception as e:
+        logger.warning("[Handler:agent_complete] IAMP notify failed: %s", e)
+
+
+# ── Agent Escalate Handler ───────────────────────────────────────────────────
+
+@event_bus.on(EventType.AGENT_ESCALATE)
+async def handle_agent_escalate(event: Event) -> None:
+    """
+    Sub-Agent 升級任務 → CEO 接手。
+    payload 預期：
+      - task_id: int
+      - agent_id: str
+      - reason: str
+      - original_command: str
+    """
+    payload = event.payload
+    task_id = payload.get("task_id")
+    agent_id = payload.get("agent_id", "unknown")
+    reason = payload.get("reason", "Escalated by sub-agent")
+
+    logger.warning("[Handler:escalate] agent=%s task=%s reason=%s",
+                   agent_id, task_id, reason)
+
+    # IAMP escalation message
+    try:
+        from runtime.iamp import message_bus, MessageType
+        message_bus.send(
+            sender=agent_id,
+            receiver="main",
+            msg_type=MessageType.TASK_ESCALATE,
+            payload={
+                "reason": reason,
+                "original_command": payload.get("original_command", ""),
+            },
+            task_id=str(task_id) if task_id else None,
+        )
+    except Exception as e:
+        logger.warning("[Handler:escalate] IAMP notify failed: %s", e)
+
+    # Re-run via MainLoop as CEO
+    original_cmd = payload.get("original_command")
+    if original_cmd:
+        try:
+            from loop.main_loop import main_loop, LoopInput
+            inp = LoopInput(
+                command=f"[ESCALATED from {agent_id}] {original_cmd}",
+                source="escalation",
+                context={"escalated_from": agent_id, "reason": reason},
+            )
+            result = main_loop.run(inp)
+            logger.info("[Handler:escalate] CEO handled: success=%s", result.success)
+        except Exception as e:
+            logger.error("[Handler:escalate] CEO handling failed: %s", e)
+
+
+# ── System Event Handler ─────────────────────────────────────────────────────
+
+@event_bus.on(EventType.SYSTEM_EVENT)
+async def handle_system_event(event: Event) -> None:
+    """
+    系統事件 → 記錄 + 必要時告警。
+    payload 預期：
+      - action: str (startup | shutdown | health_check | error | warning)
+      - detail: str
+    """
+    action = event.payload.get("action", "unknown")
+    detail = event.payload.get("detail", "")
+
+    if action == "error":
+        logger.error("[Handler:system] ERROR: %s", detail)
+        # Write to causal memory for learning
+        try:
+            from memory.memory_store import memory_store
+            memory_store.add_causal(
+                cause=f"System event: {event.source}",
+                effect=detail[:300],
+                confidence=0.8,
+            )
+        except Exception:
+            pass
+    else:
+        logger.info("[Handler:system] %s: %s", action, detail[:200])
+
+
+# ── IAMP Message Bridge Handler ──────────────────────────────────────────────
+
+@event_bus.on(EventType.IAMP_MESSAGE)
+async def handle_iamp_bridge(event: Event) -> None:
+    """
+    IAMP 消息轉發到 EventBus 後的處理。
+    主要用於：Agent 完成/升級 → 觸發後續事件鏈。
+    """
+    payload = event.payload
+    msg_type = payload.get("msg_type", "")
+
+    if msg_type == "task_complete":
+        # Chain: IAMP task_complete → EventBus AGENT_COMPLETE
+        event_bus.emit(Event(
+            type=EventType.AGENT_COMPLETE,
+            source=event.source,
+            payload=payload,
+            correlation_id=event.correlation_id,
+        ))
+    elif msg_type == "task_escalate":
+        event_bus.emit(Event(
+            type=EventType.AGENT_ESCALATE,
+            source=event.source,
+            payload=payload,
+            correlation_id=event.correlation_id,
+        ))
+
+
+# ── Task Created Handler (for metrics/logging) ──────────────────────────────
+
+@event_bus.on(EventType.TASK_CREATED)
+async def handle_task_created(event: Event) -> None:
+    """Log task creation for observability."""
+    logger.info("[Handler:task_created] task=%s source=%s",
+                event.payload.get("task_id"), event.source)
+
+
+# ── Registration helper ──────────────────────────────────────────────────────
+
+def register_all_handlers() -> None:
+    """
+    Explicitly ensure all handlers are registered.
+    Called during app startup. The @event_bus.on decorators above
+    register handlers at module import time, so this function
+    just needs to trigger the import.
+    """
+    logger.info("[EventHandlers] All event handlers registered. Stats: %s",
+                event_bus.stats())

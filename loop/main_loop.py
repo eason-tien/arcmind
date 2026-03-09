@@ -1,16 +1,21 @@
 """
-ArcMind 主循環 — OODA Loop
+ArcMind 主循環 — OODA Loop (Event-Driven 混合驅動)
 Observe → Orient → Decide → Act → [學習]
+
+驅動模式：
+  - 同步路徑: API/WebSocket → MainLoop.run()  (Request-Response)
+  - 異步路徑: EventBus → Handler → MainLoop    (Event-Driven)
 
 每個請求都走完整的五個階段：
 1. Observe:  收集輸入 + 環境感知 + Agent 狀態監控
 2. Orient:   查詢記憶 + 分析目標 + 注入 Persona + 委派歷史
 3. Decide:   模型路由 + 多 Agent 協作規劃 + Governor 審計
 4. Act:      Skill / Agent 委派 / Pipeline 執行
-5. Learn:    Feedback + Agent 績效追蹤 + 因果記憶
+5. Learn:    Feedback + Agent 績效追蹤 + 因果記憶 + Event 發佈
 
 v0.3.0: 整合 Gateway Session 管理和 Persona Injector。
 v0.5.0: 整合多 Agent 協作、IAMP、Pipeline 執行。
+v0.6.0: Event-Driven 混合驅動 — EventBus 統一事件源。
 """
 from __future__ import annotations
 
@@ -128,6 +133,12 @@ class MainLoop:
                 session_id=inp.session_id,
                 input_data={"command": inp.command, "context": inp.context},
             )
+
+            # ── Event: task_created ──
+            self._emit_event("task_created", inp.source, {
+                "task_id": task_id, "command": inp.command[:200],
+                "task_type": inp.task_type,
+            })
 
             # ── 2. ORIENT ────────────────────────────────────────────────────
             logger.info("[ORIENT] Querying local 4-layer memory...")
@@ -375,6 +386,12 @@ class MainLoop:
                 except Exception as _mem_err:
                     logger.debug("[LEARN] Memory write failed (non-fatal): %s", _mem_err)
 
+                # ── Event: agent_complete ──
+                self._emit_event("agent_complete", inp.source, {
+                    "task_id": task_id, "skill_used": skill_name,
+                    "tokens": tokens_used, "success": True,
+                })
+
                 # 更新目標進度（若有關聯目標）
                 if inp.goal_id:
                     try:
@@ -392,6 +409,12 @@ class MainLoop:
                     )
                 except Exception as e:
                     logger.warning("[LEARN] feedback.on_task_failure failed: %s", e)
+
+                # ── Event: task_failed ──
+                self._emit_event("task_failed", inp.source, {
+                    "task_id": task_id, "skill_used": skill_name,
+                    "error": error or "Unknown",
+                })
 
                 # ── Causal memory: 記錄失敗原因 ──
                 try:
@@ -454,6 +477,25 @@ class MainLoop:
                 governor_approved=governor_approved,
                 error=str(e),
             )
+
+    # ── Event-Driven 輔助 ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _emit_event(event_type_str: str, source: str, payload: dict) -> None:
+        """Fire-and-forget event emission to EventBus."""
+        try:
+            from runtime.event_bus import event_bus, Event, EventType
+            type_map = {
+                "task_created": EventType.TASK_CREATED,
+                "task_failed": EventType.TASK_FAILED,
+                "agent_complete": EventType.AGENT_COMPLETE,
+                "system_event": EventType.SYSTEM_EVENT,
+            }
+            et = type_map.get(event_type_str)
+            if et:
+                event_bus.emit(Event(type=et, source=source, payload=payload))
+        except Exception:
+            pass  # EventBus is optional — never break the main loop
 
     # ── 內部輔助 ──────────────────────────────────────────────────────────────
 

@@ -120,6 +120,10 @@ class MessageBus:
 
         # Notify subscribers
         self._notify(msg)
+
+        # ── Bridge to EventBus (Event-Driven 混合驅動) ──
+        self._bridge_to_event_bus(msg)
+
         return msg
 
     def subscribe(self, agent_id: str, callback: Callable[[AgentMessage], None]):
@@ -135,6 +139,25 @@ class MessageBus:
             if msg_type not in self._type_subscribers:
                 self._type_subscribers[msg_type] = []
             self._type_subscribers[msg_type].append(callback)
+
+    def _bridge_to_event_bus(self, msg: AgentMessage) -> None:
+        """Bridge IAMP messages into the central EventBus for event-driven processing."""
+        try:
+            from runtime.event_bus import event_bus, Event, EventType
+            event_bus.emit(Event(
+                type=EventType.IAMP_MESSAGE,
+                source=f"iamp:{msg.sender}",
+                payload={
+                    "msg_type": msg.msg_type.value,
+                    "sender": msg.sender,
+                    "receiver": msg.receiver,
+                    "payload": msg.payload,
+                    "task_id": msg.task_id,
+                },
+                correlation_id=msg.task_id or "",
+            ))
+        except Exception as e:
+            logger.debug("[IAMP] EventBus bridge failed (non-fatal): %s", e)
 
     def _notify(self, msg: AgentMessage):
         """Notify relevant subscribers."""
