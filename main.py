@@ -43,7 +43,8 @@ def main() -> None:
     args = parser.parse_args()
 
     logger.info("=" * 60)
-    logger.info("  ArcMind v0.3.0 (Gateway Architecture)")
+    from version import __version__
+    logger.info("  ArcMind v%s (Zero-Human Company)", __version__)
     logger.info("  MGIS Foundation: %s", settings.mgis_url)
     logger.info("  Listen: http://%s:%d", args.host, args.port)
     logger.info("  Gateway: WebSocket /ws + REST /v1/chat")

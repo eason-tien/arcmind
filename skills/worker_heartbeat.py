@@ -2,7 +2,10 @@
 Skill: worker_heartbeat
 零人類公司背景工作引擎。
 
-定時檢查待處理的委派任務，使用對應 Agent 的 persona 執行。
+驅動模式（混合）：
+  1. Event-driven — TASK_ASSIGN 事件觸發後立即處理（毫秒級延遲）
+  2. Cron fallback — 定時掃描漏網任務（兜底，間隔 300s）
+
 支援：
   - 單一委派任務處理
   - Pipeline 多步驟任務處理（Step 間自動傳遞 context）
@@ -13,14 +16,19 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 
 from runtime.agent_registry import agent_registry
-from runtime.iamp import message_bus, shared_memory_manager, MessageType
+from runtime.iamp import message_bus, shared_memory_manager, MessageType, AgentMessage
 from runtime.lifecycle import lifecycle
 
 logger = logging.getLogger("arcmind.skill.worker_heartbeat")
 
 _MAX_TASKS_PER_HEARTBEAT = 10
+
+# Guard against concurrent event-driven + cron execution
+_processing_lock = threading.Lock()
+_processing_task_ids: set[int] = set()
 
 
 def _process_single_task(task_info: dict) -> dict:
@@ -30,6 +38,24 @@ def _process_single_task(task_info: dict) -> dict:
     parent_task_id = task_info.get("parent_task_id")
     input_data = task_info.get("input_data", {})
 
+    # Prevent double-processing from concurrent event + cron
+    with _processing_lock:
+        if task_id in _processing_task_ids:
+            logger.debug("[Worker] Task %s already being processed, skipping.", task_id)
+            return {"task_id": task_id, "status": "skipped", "reason": "already_processing"}
+        _processing_task_ids.add(task_id)
+
+    try:
+        return _execute_task(task_id, assignee_role, parent_task_id, input_data, task_info)
+    finally:
+        with _processing_lock:
+            _processing_task_ids.discard(task_id)
+
+
+def _execute_task(task_id: int, assignee_role: str | None,
+                  parent_task_id: int | None, input_data: dict,
+                  task_info: dict) -> dict:
+    """Core task execution logic."""
     persona = agent_registry.get(assignee_role)
     if not persona:
         lifecycle.tasks.fail(task_id, f"Agent '{assignee_role}' not found in registry.")
@@ -154,11 +180,76 @@ def _check_pipeline_completion(pipeline_id: int, open_tasks: list):
             logger.error("[Worker] Failed to close pipeline %s: %s", pipeline_id, e)
 
 
+# ── Event-driven dispatch ────────────────────────────────────────────────────
+
+def _on_task_assigned(msg: AgentMessage):
+    """
+    React to TASK_ASSIGN events for immediate task processing.
+    Runs in a background thread to avoid blocking the message bus.
+    """
+    # task_id is on the message envelope, not in the payload
+    task_id_str = msg.task_id
+    if not task_id_str:
+        return
+    try:
+        task_id = int(task_id_str)
+    except (ValueError, TypeError):
+        logger.warning("[Worker:Event] Invalid task_id: %s", task_id_str)
+        return
+
+    def _dispatch():
+        try:
+            # Fetch fresh task info from DB
+            task_info = lifecycle.tasks.get(task_id)
+            if not task_info:
+                logger.warning("[Worker:Event] Task %s not found in DB.", task_id)
+                return
+            if task_info["status"] != "created":
+                logger.debug("[Worker:Event] Task %s status=%s, skipping.",
+                             task_id, task_info["status"])
+                return
+            if task_info.get("assigned_to", "main") in ("main", "ceo"):
+                return
+            if task_info.get("task_type") == "pipeline":
+                return
+
+            logger.info("[Worker:Event] Immediate dispatch for task %s", task_id)
+            result = _process_single_task(task_info)
+
+            # Check pipeline completion if applicable
+            pid = task_info.get("input_data", {}).get("pipeline_id")
+            if pid:
+                refreshed = lifecycle.tasks.list_open()
+                _check_pipeline_completion(pid, refreshed)
+
+            logger.info("[Worker:Event] Task %s result: %s",
+                        task_id, result.get("status"))
+
+        except Exception as e:
+            logger.error("[Worker:Event] Error dispatching task %s: %s", task_id, e)
+
+    thread = threading.Thread(target=_dispatch, name=f"worker-event-{task_id}",
+                              daemon=True)
+    thread.start()
+
+
+def _register_event_listener():
+    """Register the event-driven listener on the message bus."""
+    message_bus.subscribe_type(MessageType.TASK_ASSIGN, _on_task_assigned)
+    logger.info("[Worker] Event-driven listener registered on TASK_ASSIGN.")
+
+
+# Auto-register on module load
+_register_event_listener()
+
+
+# ── Cron fallback entry point ────────────────────────────────────────────────
+
 def run(inputs: dict) -> dict:
     """
-    Heartbeat entry point. Processes pending delegated tasks.
+    Cron fallback entry point. Catches any tasks missed by event dispatch.
     """
-    logger.info("Worker heartbeat started.")
+    logger.info("Worker heartbeat (cron fallback) started.")
     open_tasks = lifecycle.tasks.list_open()
 
     # Filter: created tasks assigned to sub-agents (not main/ceo)
@@ -172,7 +263,7 @@ def run(inputs: dict) -> dict:
     if not pending_tasks:
         return {"message": "No pending delegated tasks.", "processed": 0}
 
-    logger.info("Found %d pending tasks.", len(pending_tasks))
+    logger.info("Found %d pending tasks (cron fallback).", len(pending_tasks))
 
     # Process tasks (limit per heartbeat to avoid overload)
     results = []
@@ -195,10 +286,12 @@ def run(inputs: dict) -> dict:
 
     processed = len(results)
     succeeded = sum(1 for r in results if r.get("status") == "completed")
+    skipped = sum(1 for r in results if r.get("status") == "skipped")
 
     return {
-        "message": f"Processed {processed} tasks ({succeeded} succeeded).",
+        "message": f"Processed {processed} tasks ({succeeded} succeeded, {skipped} skipped).",
         "processed": processed,
         "succeeded": succeeded,
+        "skipped": skipped,
         "results": results,
     }

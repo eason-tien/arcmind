@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from config.settings import settings
+from version import __version__ as _arcmind_version
 
 logger = logging.getLogger("arcmind.server")
 
@@ -80,12 +81,12 @@ async def lifespan(app: FastAPI):
         if "worker-heartbeat" not in existing_jobs:
             cron_system.add_interval(
                 name="worker-heartbeat",
-                seconds=60,
+                seconds=300,
                 skill_name="worker_heartbeat",
                 input_data={},
                 governor_required=False,
             )
-            logger.info("📅 Registered CRON: worker-heartbeat (Every 60s)")
+            logger.info("📅 Registered CRON: worker-heartbeat (Every 300s, event-driven primary)")
 
     except Exception as e:
         logger.warning("Failed to register iteration CRONs: %s", e)
@@ -154,7 +155,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="ArcMind",
         description="MGIS-based Autonomous Intelligence System",
-        version="0.4.0",
+        version=_arcmind_version,
         lifespan=lifespan,
     )
 
@@ -189,7 +190,7 @@ def create_app() -> FastAPI:
         mgis_online = mgis.is_online()
         return {
             "status": "ok",
-            "version": "0.4.0",
+            "version": _arcmind_version,
             "mgis_online": mgis_online,
             "mgis_url": settings.mgis_url,
             "skills_loaded": len(skill_manager.list_skills()),

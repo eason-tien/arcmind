@@ -29,6 +29,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 
+from version import __version__ as _arcmind_version
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, UploadFile, File, APIRouter
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -362,11 +363,11 @@ async def _handle_system_command(command: str, ctx: SessionContext) -> str:
             f"💚 ArcMind Gateway 運行中\n"
             f"Sessions: {session_manager.active_count()}\n"
             f"Agents: {agent_count}\n"
-            f"Version: 0.5.0"
+            f"Version: {_arcmind_version}"
         )
 
     elif command == "/version":
-        return "ArcMind v0.5.0 (Zero-Human Company)"
+        return f"ArcMind v{_arcmind_version} (Zero-Human Company)"
 
     elif command.startswith("/install "):
         url = command[len("/install "):].strip()
@@ -748,7 +749,7 @@ def get_chat_history(session_id: str):
 def gateway_status():
     return {
         "status": "running",
-        "version": "0.4.0",
+        "version": _arcmind_version,
         "architecture": "OpenClaw-style Gateway",
         "sessions": session_manager.summary(),
     }

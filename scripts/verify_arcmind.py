@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
+from version import __version__ as _arcmind_version
 from db.schema import init_db
 from runtime.skill_manager import SkillManager
 from runtime.lifecycle import LifecycleManager
@@ -141,7 +142,7 @@ print("=" * 55)
 # 寫入 evidence
 evidence = {
     "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    "version": "0.2.0",
+    "version": _arcmind_version,
     "results": [{"name": n, "status": s, "detail": d} for n, s, d in RESULTS],
     "summary": f"{passed}/{total}",
 }
