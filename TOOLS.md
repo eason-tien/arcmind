@@ -26,6 +26,21 @@
 | `add_agent` | 添加子 Agent | `{"agent_id":"translate","name":"翻譯","model":"ollama:qwen3:8b","purpose":"翻譯","capabilities":["translate"]}` |
 | `remove_agent` | 移除子 Agent | `{"agent_id": "translate"}` |
 
+### 委派工具（零人類公司 CEO 專用）
+
+| 工具 | 用途 | 範例 |
+|------|------|------|
+| `delegate_task` | 委派單一任務給子 Agent | `{"assignee":"code","title":"寫一個排序演算法","priority":"high"}` |
+| `delegate_pipeline` | 建立多 Agent 協作 Pipeline | `{"title":"調研並開發","steps":[{"assignee":"search","instruction":"調研 React 18"},{"assignee":"code","instruction":"寫範例"},{"assignee":"qa","instruction":"測試"}]}` |
+| `agent_inbox` | 查看 CEO 收件箱（子 Agent 回報） | `{"limit": 10}` |
+
+#### 委派使用指南
+- **何時使用 `delegate_task`**：耗時搜尋、寫代碼、跑測試、數據分析等單一專業任務
+- **何時使用 `delegate_pipeline`**：需要多步驟協作的複雜任務（先調研 → 再開發 → 再測試）
+- **可用 Agent**: `search`(搜尋), `code`(寫代碼), `analysis`(分析), `qa`(測試), `devops`(部署), `pm`(需求), `windows`(遠端)
+- **任務執行**：委派後任務進入佇列，由 Worker Heartbeat（每60秒）自動在背景執行
+- **結果追蹤**：用 `agent_inbox` 查看完成/失敗/升級通知
+
 ### Skill 調用工具
 
 | 工具 | 用途 | 範例 |
@@ -55,17 +70,35 @@
 
 ### 1. OODA 主循環 (`loop/main_loop.py`)
 每個請求經過 5 階段：
-- **Observe**：收集輸入（Telegram / API / WebSocket）+ 偏好萃取（背景）
-- **Orient**：查四層記憶 + 注入 Persona + 注入 `<User_Preferences>` + 注入 `<History_SOP>` + 環境拓撲摘要
-- **Decide**：Delegator 判斷委派 → 選擇 Agent + Model
-- **Act**：Tool Loop 執行（LLM ↔ 工具循環，自動剪枝上下文）
-- **Learn**：Feedback 寫回記憶 + SOP 快取（背景）
+- **Observe**：收集輸入 + 偏好萃取 + 環境拓撲 + **Agent 狀態感知（全公司員工動態）**
+- **Orient**：查四層記憶 + 注入 Persona + `<User_Preferences>` + `<History_SOP>` + 環境拓撲 + **委派歷史（近期 Agent 活動）**
+- **Decide**：Delegator 判斷委派 → **多 Agent Pipeline 路由** → 選擇 Agent + Model → Governor 審計
+- **Act**：Tool Loop 執行 / **Multi-Agent Pipeline 執行** / Skill 調用
+- **Learn**：Feedback 寫回記憶 + SOP 快取 + **Agent 績效追蹤（IAMP STATUS_REPORT）**
 
-### 2. Agent 委派系統 (`runtime/delegator.py`)
-- MAIN 收到任務 → 掃描 keyword → 匹配子 Agent capability
-- 匹配成功 → 用子 Agent 的 model + system_prompt 執行
-- 無匹配 → MAIN 自己處理
-- Agent 定義存在 `config/agents.json`
+### 2. 零人類公司 Agent 委派系統
+#### Delegator (`runtime/delegator.py`)
+- `route(command)` — 單一 Agent 路由（keyword → capability 匹配）
+- `route_multi(command)` — 多 Agent Pipeline 路由（偵測「先…再…」等信號）
+- `execute(match, command)` — 用子 Agent 的 model + system_prompt 執行
+- `execute_plan(plan, command)` — 串行多步驟，步驟間傳遞 context
+
+#### IAMP 通訊 (`runtime/iamp.py`)
+- **MessageBus** — Agent 間結構化訊息（task_assign / task_complete / task_escalate / handoff）
+- **SharedMemory** — Pipeline 步驟間共享工作記憶（自動傳遞前步結果）
+- CEO 可用 `agent_inbox` 工具查看子 Agent 回報
+
+#### Agent 團隊 (`config/agents.json`)
+| Agent | 用途 | Model |
+|-------|------|-------|
+| CEO (main) | 調度決策 | MiniMax-M2.5 |
+| search | 搜尋 | NVIDIA 70B |
+| analysis | 分析 | NVIDIA 70B |
+| code | 開發 | MiniMax-M2.1 |
+| qa | 測試 | NVIDIA 70B |
+| devops | 部署 | NVIDIA 70B |
+| pm | 需求 | NVIDIA 70B |
+| windows | 遠端 | Claude |
 
 ### 3. 多 Provider 模型路由 (`runtime/model_router.py`)
 - 支援：MiniMax / Ollama / Anthropic / OpenAI / Google / Groq / Mistral
@@ -92,7 +125,7 @@
 | **document_skill** | PPT/Excel 文件生成 | `analyze_template`, `create_ppt`, `create_excel` |
 | **env_discovery** | 三維度認知掃描 | `host_info`, `scan_ports`, `db_discovery`, `full_scan` |
 | **gitnexus_skill** | 代碼智慧引擎 | `query`, `context`, `impact`, `rename`, `reindex` |
-| **agent_delegation** | 背景委派任務給專職子員工 (Paperclip 多代理架構) | `assignee`, `title`, `task_data` |
+| **agent_delegation** | 背景委派任務（單一/Pipeline/升級/交接） | `delegate`, `delegate_multi`, `escalate`, `handoff` |
 
 ### 6. Skill 市場 (`runtime/skill_installer.py`)
 - `/install owner/repo` — 從 GitHub 安裝
@@ -243,6 +276,8 @@
 | `/status` | 系統狀態 |
 | `/cancel` | 取消當前任務 |
 | `/reset` | 重置 Session |
+| `/agents` | 列出所有 Agent 及狀態 |
+| `/agent_stats` | Agent 通訊統計 (IAMP) |
 
 ---
 

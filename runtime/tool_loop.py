@@ -272,6 +272,97 @@ class ToolRegistry:
             handler=_tool_remove_agent,
         )
 
+        # ── Agent delegation tools — CEO 委派任務給子 Agent ──
+        self.register(
+            name="delegate_task",
+            description=(
+                "CEO 委派任務給子 Agent。用於將耗時任務（搜尋、寫代碼、分析、測試）"
+                "交給專業 Agent 在背景處理。任務會在 Heartbeat 排程中自動執行。\n"
+                "可用 Agent: search(搜尋), code(寫代碼), analysis(分析), "
+                "qa(測試), devops(部署), pm(需求分析), windows(遠端操作)"
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "assignee": {
+                        "type": "string",
+                        "description": "Agent ID: search, code, analysis, qa, devops, pm, windows",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "任務標題（簡短描述）",
+                    },
+                    "task_data": {
+                        "type": "object",
+                        "description": "任務詳細內容和指示",
+                    },
+                    "priority": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high", "critical"],
+                        "description": "優先級 (預設 medium)",
+                    },
+                },
+                "required": ["assignee", "title"],
+            },
+            handler=_tool_delegate_task,
+        )
+        self.register(
+            name="delegate_pipeline",
+            description=(
+                "CEO 建立多 Agent 協作 Pipeline。多個 Agent 按順序執行，"
+                "每步結果自動傳遞給下一步。適合複雜任務如：先調研 → 再開發 → 再測試。\n"
+                "最多 5 個步驟。"
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Pipeline 總標題",
+                    },
+                    "steps": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "assignee": {
+                                    "type": "string",
+                                    "description": "Agent ID",
+                                },
+                                "instruction": {
+                                    "type": "string",
+                                    "description": "這一步的具體指示",
+                                },
+                            },
+                            "required": ["assignee", "instruction"],
+                        },
+                        "description": "按順序執行的步驟列表",
+                    },
+                    "priority": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high", "critical"],
+                        "description": "優先級",
+                    },
+                },
+                "required": ["title", "steps"],
+            },
+            handler=_tool_delegate_pipeline,
+        )
+        self.register(
+            name="agent_inbox",
+            description="查看 CEO 的收件箱 — 顯示子 Agent 回報的任務完成、升級、交接等訊息。",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "最多顯示幾筆 (預設 10)",
+                    },
+                },
+            },
+            handler=_tool_agent_inbox,
+        )
+
         # ── Skill invocation — 讓 Agent 呼叫任何已註冊的 skill ──
         self.register(
             name="invoke_skill",
@@ -581,6 +672,85 @@ def _tool_remove_agent(agent_id: str, **kwargs) -> str:
         return agent_registry.remove_agent(agent_id)
     except Exception as e:
         return f"Error removing agent: {e}"
+
+
+# ── Agent Delegation Tools ───────────────────────────────────────────────────
+
+def _tool_delegate_task(
+    assignee: str, title: str,
+    task_data: dict | None = None,
+    priority: str = "medium",
+    **kwargs,
+) -> str:
+    """Delegate a task to a sub-agent."""
+    try:
+        from skills.agent_delegation import delegate_task
+        result = delegate_task({
+            "assignee": assignee,
+            "title": title,
+            "task_data": task_data or {},
+            "priority": priority,
+        })
+        if "error" in result:
+            return f"委派失敗: {result['error']}"
+        return (
+            f"✅ 任務已委派給 {assignee}\n"
+            f"Task ID: {result.get('task_id')}\n"
+            f"Priority: {priority}\n"
+            f"狀態: 已排入佇列，Heartbeat 會自動處理。"
+        )
+    except Exception as e:
+        return f"委派錯誤: {e}"
+
+
+def _tool_delegate_pipeline(
+    title: str, steps: list,
+    priority: str = "medium",
+    **kwargs,
+) -> str:
+    """Create a multi-agent pipeline."""
+    try:
+        from skills.agent_delegation import delegate_multi
+        result = delegate_multi({
+            "title": title,
+            "steps": steps,
+            "priority": priority,
+        })
+        if "error" in result:
+            return f"Pipeline 建立失敗: {result['error']}"
+        step_desc = " → ".join(s.get("assignee", "?") for s in steps)
+        return (
+            f"✅ 多 Agent Pipeline 已建立\n"
+            f"Pipeline ID: {result.get('pipeline_id')}\n"
+            f"步驟: {step_desc}\n"
+            f"共 {result.get('steps', 0)} 步，Heartbeat 會按順序執行。"
+        )
+    except Exception as e:
+        return f"Pipeline 錯誤: {e}"
+
+
+def _tool_agent_inbox(limit: int = 10, **kwargs) -> str:
+    """Show CEO's inbox from IAMP message bus."""
+    try:
+        from runtime.iamp import message_bus
+        messages = message_bus.get_inbox("main", limit=limit)
+        if not messages:
+            return "收件箱為空 — 目前沒有子 Agent 回報。"
+        lines = [f"## CEO 收件箱 ({len(messages)} 筆)", ""]
+        for m in messages:
+            ts = time.strftime("%m/%d %H:%M", time.localtime(m.timestamp))
+            payload_summary = str(m.payload.get("output",
+                                  m.payload.get("reason",
+                                  m.payload.get("review", ""))))[:150]
+            lines.append(
+                f"**[{m.msg_type.value}]** from `{m.sender}` ({ts})\n"
+                f"  Task: {m.task_id or 'N/A'}\n"
+                f"  {payload_summary}"
+            )
+            lines.append("")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"收件箱讀取錯誤: {e}"
 
 
 # ── Skill Invocation Tools ───────────────────────────────────────────────────
