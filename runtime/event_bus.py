@@ -265,6 +265,48 @@ class EventBus:
         while len(self._dead_letters) > self._max_dead_letters:
             self._dead_letters.pop(0)
 
+    # ── Dead Letter Retry ──────────────────────────────────────────────────
+
+    async def retry_dead_letters(self, max_retries: int = 10) -> dict[str, int]:
+        """
+        Retry failed events from the dead letter queue.
+        Returns counts of retried/succeeded/failed events.
+        """
+        if not self._dead_letters:
+            return {"retried": 0, "succeeded": 0, "failed": 0}
+
+        to_retry = self._dead_letters[:max_retries]
+        self._dead_letters = self._dead_letters[max_retries:]
+
+        succeeded = 0
+        failed = 0
+        for event in to_retry:
+            try:
+                await self._dispatch(event)
+                succeeded += 1
+            except Exception as e:
+                failed += 1
+                self._dead_letters.append(event)
+                logger.warning("[EventBus] retry failed for event %s: %s", event.id, e)
+
+        self._trim_dead_letters()
+        logger.info("[EventBus] dead letter retry: %d retried, %d ok, %d failed",
+                    len(to_retry), succeeded, failed)
+        return {"retried": len(to_retry), "succeeded": succeeded, "failed": failed}
+
+    def dead_letter_summary(self) -> list[dict[str, Any]]:
+        """Return summary of dead letter events for diagnostics."""
+        return [
+            {
+                "id": e.id,
+                "type": e.type.value,
+                "source": e.source,
+                "timestamp": e.timestamp,
+                "priority": e.priority.name,
+            }
+            for e in self._dead_letters
+        ]
+
     # ── Stats ────────────────────────────────────────────────────────────────
 
     def stats(self) -> dict[str, Any]:

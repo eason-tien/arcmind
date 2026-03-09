@@ -398,13 +398,34 @@ class Delegator:
         plan: DelegationPlan,
         command: str,
         system: str | None = None,
+        pipeline_id: str | None = None,
     ) -> dict:
         """
         Execute a multi-agent DelegationPlan sequentially.
         Each step receives the prior step's output as context.
+        Emits events for observability and persists state to SharedMemory.
         """
         if not plan.steps:
             return {"success": False, "error": "Empty delegation plan"}
+
+        # Generate pipeline ID for tracking
+        if not pipeline_id:
+            import uuid
+            pipeline_id = f"pipe-{uuid.uuid4().hex[:8]}"
+
+        # Initialize SharedMemory for pipeline state persistence
+        shared_mem = None
+        try:
+            from runtime.iamp import shared_memory_manager
+            shared_mem = shared_memory_manager.get(pipeline_id)
+            shared_mem.write("pipeline", "plan", {
+                "description": plan.description,
+                "total_steps": len(plan.steps),
+                "command": command[:500],
+                "agents": [s.agent_id for s in plan.steps],
+            })
+        except Exception:
+            pass
 
         results = []
         prior_output = None
@@ -412,6 +433,14 @@ class Delegator:
         for i, step in enumerate(plan.steps):
             logger.info("[Delegator] Plan step %d/%d: %s (%s)",
                         i + 1, len(plan.steps), step.agent_name, step.capability)
+
+            # Emit pipeline step start event
+            self._emit_pipeline_event("step_start", pipeline_id, {
+                "step_index": i,
+                "agent_id": step.agent_id,
+                "capability": step.capability,
+                "total_steps": len(plan.steps),
+            })
 
             result = self.execute(
                 match=step,
@@ -421,10 +450,31 @@ class Delegator:
             )
             results.append(result)
 
+            # Persist step result to SharedMemory
+            if shared_mem:
+                try:
+                    shared_mem.write(step.agent_id, f"step_{i}_result", {
+                        "success": result.get("success"),
+                        "output": str(result.get("output", ""))[:1000],
+                        "elapsed_s": result.get("elapsed_s", 0),
+                    })
+                except Exception:
+                    pass
+
             if result.get("success"):
                 prior_output = result.get("output", "")
+                self._emit_pipeline_event("step_complete", pipeline_id, {
+                    "step_index": i,
+                    "agent_id": step.agent_id,
+                    "elapsed_s": result.get("elapsed_s", 0),
+                })
             else:
                 logger.warning("[Delegator] Plan step %d failed, stopping", i + 1)
+                self._emit_pipeline_event("step_failed", pipeline_id, {
+                    "step_index": i,
+                    "agent_id": step.agent_id,
+                    "error": result.get("error", "unknown"),
+                })
                 break
 
         # Aggregate
@@ -433,16 +483,49 @@ class Delegator:
         final_output = results[-1].get("output", "") if results else ""
         all_success = all(r.get("success") for r in results)
 
+        # Emit pipeline completion event
+        self._emit_pipeline_event(
+            "pipeline_complete" if all_success else "pipeline_failed",
+            pipeline_id, {
+                "steps_completed": len(results),
+                "total_steps": len(plan.steps),
+                "total_tokens": total_tokens,
+                "total_elapsed_s": round(total_elapsed, 2),
+            })
+
+        # Cleanup SharedMemory on completion
+        if shared_mem:
+            try:
+                from runtime.iamp import shared_memory_manager
+                shared_memory_manager.cleanup(pipeline_id)
+            except Exception:
+                pass
+
         return {
             "success": all_success,
             "output": final_output,
             "plan": plan.description,
+            "pipeline_id": pipeline_id,
             "steps": len(results),
             "total_tokens": total_tokens,
             "total_elapsed_s": round(total_elapsed, 2),
             "delegated": True,
             "step_results": results,
         }
+
+    @staticmethod
+    def _emit_pipeline_event(action: str, pipeline_id: str, detail: dict) -> None:
+        """Fire-and-forget pipeline observability event."""
+        try:
+            from runtime.event_bus import event_bus, Event, EventType, EventPriority
+            event_bus.emit(Event(
+                type=EventType.SYSTEM_EVENT,
+                source=f"pipeline:{pipeline_id}",
+                payload={"action": action, "detail": str(detail), **detail},
+                priority=EventPriority.LOW,
+            ))
+        except Exception:
+            pass
 
 
 # ── Singleton ──
