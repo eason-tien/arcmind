@@ -180,7 +180,7 @@ class TelegramChannel(Channel):
         logger.info("[Telegram] Stopping bot...")
 
     async def send(self, message: OutboundMessage) -> bool:
-        """Send a message back to Telegram."""
+        """Send a message back to Telegram, including any attachments."""
         if not self._app or not self._app.bot:
             return False
 
@@ -189,25 +189,64 @@ class TelegramChannel(Channel):
             logger.warning("[Telegram] No chat_id for outbound message")
             return False
 
-        try:
-            await self._app.bot.send_message(
-                chat_id=int(chat_id),
-                text=message.text,
-                parse_mode="Markdown",
-            )
-            return True
-        except Exception as e:
-            logger.error("[Telegram] Send failed: %s", e)
-            # Retry without markdown
+        success = True
+
+        # 1. Send text if present
+        if message.text and message.text.strip():
             try:
                 await self._app.bot.send_message(
                     chat_id=int(chat_id),
                     text=message.text,
+                    parse_mode="Markdown",
                 )
-                return True
-            except Exception as e2:
-                logger.error("[Telegram] Send retry failed: %s", e2)
-                return False
+            except Exception as e:
+                logger.error("[Telegram] Send text failed: %s", e)
+                # Retry without markdown
+                try:
+                    await self._app.bot.send_message(
+                        chat_id=int(chat_id),
+                        text=message.text,
+                    )
+                except Exception as e2:
+                    logger.error("[Telegram] Send retry failed: %s", e2)
+                    success = False
+
+        # 2. Send attachments if any
+        if hasattr(message, "attachments") and message.attachments:
+            from pathlib import Path
+            for att in message.attachments:
+                file_path = att.get("path")
+                if not file_path or not Path(file_path).exists():
+                    logger.warning("[Telegram] Attachment file not found: %s", file_path)
+                    continue
+                    
+                try:
+                    logger.info("[Telegram] Sending attachment: %s", file_path)
+                    filename = Path(file_path).name
+                    with open(file_path, "rb") as f:
+                        if file_path.endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                            await self._app.bot.send_photo(
+                                chat_id=int(chat_id), 
+                                photo=f,
+                                filename=filename
+                            )
+                        elif file_path.endswith('.mp3', '.ogg', '.wav'):
+                            await self._app.bot.send_voice(
+                                chat_id=int(chat_id), 
+                                voice=f,
+                                filename=filename
+                            )
+                        else:
+                            await self._app.bot.send_document(
+                                chat_id=int(chat_id), 
+                                document=f,
+                                filename=filename
+                            )
+                except Exception as e:
+                    logger.error("[Telegram] Send attachment failed: %s", e)
+                    success = False
+
+        return success
 
     # ── Telegram Handlers ───────────────────────────────────────────────
 

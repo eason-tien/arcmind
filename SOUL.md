@@ -61,7 +61,7 @@ User → Channel → Gateway (:8100) → OODA Loop → Delegator → Agent → T
 ```
 
 ## Agent 團隊
-- 👑 **MAIN**：MiniMax-M2.5（調度 + 通用）
+- 👑 **MAIN**：NVIDIA kimi-K2.5（調度 + 通用）
 - 🔧 **Code**：qwen2.5-coder:14b（代碼）
 - 🔍 **Search**：qwen3:8b（搜尋）
 - 📊 **Analysis**：qwen2.5:14b（分析）

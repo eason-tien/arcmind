@@ -31,10 +31,20 @@ logger = logging.getLogger("arcmind.main_loop")
 
 
 def _strip_think_tags(text: str) -> str:
-    """Strip <think>...</think> chain-of-thought tags from model output."""
+    """Strip <think>...</think> and raw tool-call markup from model output."""
     if not text:
         return text
-    return re.sub(r"<think>[\s\S]*?</think>\s*", "", text).strip()
+    # Strip <think>...</think>
+    text = re.sub(r"<think>[\s\S]*?</think>\s*", "", text)
+    # Strip JSON arrays that are sometimes prepended before tool calls: [{"type": "text", "text": ""}]
+    text = re.sub(r"^\[\{.*?\}\]\s*", "", text)
+    # Strip kimi-K2.5 raw tool call blocks (handles underscores: <|tool_call_begin|>, <|toolcallssectionbegin|>)
+    text = re.sub(r"<\|tool_?calls?_?section_?begin\|>[\s\S]*?<\|tool_?calls?_?section_?end\|>\s*", "", text)
+    # Strip remaining kimi tool tokens (handles <|toolcall|>, <|tool_call|>, <|tool_call_end|>)
+    text = re.sub(r"<\|tool_?[a-z_]*\|>", "", text)
+    # Strip function call patterns like functions.xxx:N
+    text = re.sub(r"functions\.\w+:\d+\s*", "", text)
+    return text.strip()
 
 # ── 資料結構 ──────────────────────────────────────────────────────────────────
 

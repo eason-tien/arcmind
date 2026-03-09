@@ -1,27 +1,27 @@
 # ArcMind 多 Provider 模型路由規則
-# 版本 2.3 — MAIN: MiniMax M2.5, NVIDIA NIM 免费模型
+# 版本 2.3 — MAIN: NVIDIA kimi-K2.5
 
 version: "2.3"
 
 # ── 自訂 Provider ──
 providers:
   nvidia:
-    api_key: "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"
+    api_key: "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"
     base_url: "https://integrate.api.nvidia.com/v1"
 
-# ── MAIN 模型（MiniMax M2.5）──
-default: custom:MiniMax-M2.5
+# ── MAIN 模型（NVIDIA kimi-K2.5）──
+default: nvidia:moonshotai/kimi-k2-instruct
 
 # 任務類型路由
 task_type_rules:
-  # 一般任務 → MiniMax M2.5
+  # 一般任務 → kimi-K2.5
   - match: [code_gen, summarize, plan, browser, file_ops, general, code_review, architecture, complex_analysis, deep_reasoning]
-    model: custom:MiniMax-M2.5
+    model: nvidia:moonshotai/kimi-k2-instruct
     max_tokens: 8192
 
-  # 快速分類 → MiniMax M2.5
+  # 快速分類 → kimi-K2.5
   - match: [classify, quick_check, format, extract, web_search]
-    model: custom:MiniMax-M2.5
+    model: nvidia:moonshotai/kimi-k2-instruct
     max_tokens: 2048
 
   # 本地 Ollama（隱私敏感任務）
@@ -44,15 +44,15 @@ budget_rules:
   - budget: free
     model: nvidia:meta/llama-3.1-70b-instruct
   - budget: low
-    model: custom:MiniMax-M2.5
+    model: nvidia:moonshotai/kimi-k2-instruct
   - budget: medium
-    model: custom:MiniMax-M2.5
+    model: nvidia:moonshotai/kimi-k2-instruct
   - budget: high
-    model: custom:MiniMax-M2.5
+    model: nvidia:moonshotai/kimi-k2-instruct
 
 # Fallback 鏈
 fallback_chain:
-  - custom:MiniMax-M2.5
+  - nvidia:moonshotai/kimi-k2-instruct
   - nvidia:meta/llama-3.1-70b-instruct
   - ollama:qwen3:8b
   - ollama:qwen3:14b@192.168.1.151
