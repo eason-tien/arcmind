@@ -106,13 +106,23 @@ def _check_json_configs(result: RepairResult) -> None:
 
 
 def _check_mysql(result: RepairResult) -> None:
-    """Check MySQL connectivity."""
+    """Check MySQL connectivity using environment variables for credentials."""
+    mysql_host = os.environ.get("MYSQL_HOST", "127.0.0.1")
+    mysql_port = int(os.environ.get("MYSQL_PORT", "3306"))
+    mysql_user = os.environ.get("MYSQL_USER", "root")
+    mysql_password = os.environ.get("MYSQL_PASSWORD", "")
+    mysql_database = os.environ.get("MYSQL_DATABASE", "arcmind")
+
+    if not mysql_password:
+        result.add("mysql", "OK", "MySQL password not configured (env MYSQL_PASSWORD)")
+        return
+
     try:
         import pymysql
         conn = pymysql.connect(
-            host="127.0.0.1", port=3306,
-            user="root", password="root123",
-            database="arcmind", connect_timeout=5,
+            host=mysql_host, port=mysql_port,
+            user=mysql_user, password=mysql_password,
+            database=mysql_database, connect_timeout=5,
         )
         cur = conn.cursor()
         cur.execute("SELECT 1")
@@ -130,9 +140,9 @@ def _check_mysql(result: RepairResult) -> None:
             # Re-test
             import pymysql
             conn = pymysql.connect(
-                host="127.0.0.1", port=3306,
-                user="root", password="root123",
-                database="arcmind", connect_timeout=5,
+                host=mysql_host, port=mysql_port,
+                user=mysql_user, password=mysql_password,
+                database=mysql_database, connect_timeout=5,
             )
             cur = conn.cursor()
             cur.execute("SELECT 1")

@@ -96,8 +96,11 @@ class Governor:
                  block_threshold: int = 70):
         self.mode = os.getenv("GOVERNOR_MODE", mode)
         self.block_threshold = int(os.getenv("GOVERNOR_BLOCK_THRESHOLD", str(block_threshold)))
-        self.warn_threshold = max(20, min(80,
-            int(os.getenv("GOVERNOR_WARN_THRESHOLD", str(warn_threshold)))))
+        raw_warn = int(os.getenv("GOVERNOR_WARN_THRESHOLD", str(warn_threshold)))
+        self.warn_threshold = max(20, min(80, raw_warn))
+        if self.warn_threshold != raw_warn:
+            logger.warning("[Governor] warn_threshold clamped: %d → %d (valid range: 20-80)",
+                           raw_warn, self.warn_threshold)
         self._eval_count = 0
         self._audit_history: list[str] = []
         logger.info("[Governor] mode=%s warn=%d block=%d",

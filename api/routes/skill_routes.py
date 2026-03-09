@@ -14,7 +14,6 @@ class InvokeRequest(BaseModel):
     skill: str
     inputs: dict = {}
     session_id: Optional[int] = None
-    governor_bypass: bool = False
 
 
 @router.get("/")
@@ -36,18 +35,17 @@ def get_skill(name: str):
 def invoke_skill(req: InvokeRequest):
     """
     直接呼叫一個 Skill（短路 OODA 循環，適合測試或低風險操作）。
-    若 governor_bypass=False（預設），先做 MGIS 審計。
+    所有呼叫都需通過 MGIS Governor 審計（fail-closed）。
     """
     from runtime.skill_manager import skill_manager, SkillNotFound
     from foundation.mgis_client import mgis
 
-    if not req.governor_bypass:
-        audit = mgis.audit(
-            action=f"invoke_skill:{req.skill}",
-            context={"inputs": req.inputs},
-        )
-        if not audit.get("approved", True):
-            raise HTTPException(403, f"Governor blocked: {audit.get('reason', 'unknown')}")
+    audit = mgis.audit(
+        action=f"invoke_skill:{req.skill}",
+        context={"inputs": req.inputs},
+    )
+    if not audit.get("approved", False):  # fail-closed: default deny
+        raise HTTPException(403, f"Governor blocked: {audit.get('reason', 'unknown')}")
 
     try:
         result = skill_manager.invoke(req.skill, req.inputs)
@@ -59,4 +57,4 @@ def invoke_skill(req: InvokeRequest):
             return openclaw.invoke_skill(req.skill, req.inputs)
         raise HTTPException(404, f"Skill '{req.skill}' not found locally or in OpenClaw")
     except Exception as e:
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, "Skill invocation failed")

@@ -256,6 +256,7 @@ class SessionManager:
 
     def _load_from_db(self, session_id: str) -> SessionContext | None:
         """Load session from DB."""
+        db = None
         try:
             db = SessionLocal()
             row = db.query(Session_).filter(
@@ -263,7 +264,6 @@ class SessionManager:
                 Session_.status == "active",
             ).first()
             if not row:
-                db.close()
                 return None
 
             ctx_data = json.loads(row.context or "{}")
@@ -280,14 +280,17 @@ class SessionManager:
                 created_at=row.created_at.isoformat() if row.created_at else "",
                 updated_at=row.updated_at.isoformat() if row.updated_at else "",
             )
-            db.close()
             return ctx
         except Exception as e:
             logger.warning("[SessionManager] DB load failed for %s: %s", session_id, e)
             return None
+        finally:
+            if db:
+                db.close()
 
     def _save_to_db(self, ctx: SessionContext) -> None:
-        """Save session state to DB (write-through)."""
+        """Save session state to DB (write-through) with proper error handling."""
+        db = None
         try:
             db = SessionLocal()
             ctx_json = json.dumps({
@@ -299,7 +302,7 @@ class SessionManager:
                 "context_summary": ctx.context_summary,
                 "turn_count": ctx.turn_count,
                 "tokens_used": ctx.tokens_used,
-            }, ensure_ascii=False)
+            }, ensure_ascii=False, default=str)
 
             row = db.query(Session_).filter(Session_.name == ctx.session_id).first()
             if row:
@@ -313,21 +316,30 @@ class SessionManager:
                 )
                 db.add(row)
             db.commit()
-            db.close()
         except Exception as e:
+            if db:
+                db.rollback()
             logger.warning("[SessionManager] DB save failed for %s: %s", ctx.session_id, e)
+        finally:
+            if db:
+                db.close()
 
     def _update_db_status(self, session_id: str, status: str) -> None:
         """Update session status in DB."""
+        db = None
         try:
             db = SessionLocal()
             row = db.query(Session_).filter(Session_.name == session_id).first()
             if row:
                 row.status = status
                 db.commit()
-            db.close()
         except Exception as e:
+            if db:
+                db.rollback()
             logger.warning("[SessionManager] DB update failed for %s: %s", session_id, e)
+        finally:
+            if db:
+                db.close()
 
     # ── Context Compression (migrated from ARCHILLX v0.44) ───────────────
 

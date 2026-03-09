@@ -133,21 +133,31 @@ async def lifespan(app: FastAPI):
 
     cron_system.shutdown()
 
+    # Graceful session manager shutdown
+    session_manager.stop()
+    logger.info("✅ Session manager stopped")
+
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title="ArcMind",
         description="MGIS-based Autonomous Intelligence System",
-        version="0.2.0",
+        version="0.4.0",
         lifespan=lifespan,
     )
 
-    # CORS
+    # CORS — restrict to configured origins (default: localhost only)
+    cors_origins = settings.cors_allowed_origins if hasattr(settings, 'cors_allowed_origins') and settings.cors_allowed_origins else [
+        "http://localhost:8100",
+        "http://localhost:5173",
+        "http://127.0.0.1:8100",
+        "http://127.0.0.1:5173",
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=cors_origins,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-Session-ID"],
     )
 
     # ── Health (lightweight for watchdog) ──────────────────────────────────
@@ -167,7 +177,7 @@ def create_app() -> FastAPI:
         mgis_online = mgis.is_online()
         return {
             "status": "ok",
-            "version": "0.2.0",
+            "version": "0.4.0",
             "mgis_online": mgis_online,
             "mgis_url": settings.mgis_url,
             "skills_loaded": len(skill_manager.list_skills()),
@@ -302,10 +312,14 @@ def create_app() -> FastAPI:
         @app.get("/ui", include_in_schema=False)
         @app.get("/ui/{catchall:path}", include_in_schema=False)
         def serve_ui(catchall: str = ""):
-            # SPA routing fallback
-            file_path = os.path.join(ui_dist_path, catchall)
-            if catchall and os.path.exists(file_path) and os.path.isfile(file_path):
-                return FileResponse(file_path)
+            # SPA routing fallback — with path traversal protection
+            if catchall:
+                file_path = os.path.normpath(os.path.join(ui_dist_path, catchall))
+                # Ensure resolved path stays within ui_dist_path
+                if not file_path.startswith(os.path.normpath(ui_dist_path)):
+                    return JSONResponse(status_code=403, content={"error": "Forbidden"})
+                if os.path.exists(file_path) and os.path.isfile(file_path):
+                    return FileResponse(file_path)
             return FileResponse(os.path.join(ui_dist_path, "index.html"))
             
         logger.info("[App] Web UI registered at /ui")
@@ -318,7 +332,7 @@ def create_app() -> FastAPI:
         logger.exception("Unhandled error: %s", exc)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"error": str(exc)},
+            content={"error": "Internal server error"},
         )
 
     return app

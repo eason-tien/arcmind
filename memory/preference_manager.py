@@ -111,10 +111,13 @@ def _extract_sync(user_input: str) -> None:
         raw = resp.content.strip()
         # 嘗試提取 JSON（可能被 markdown 包裹）
         if "```" in raw:
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
+            parts = raw.split("```")
+            if len(parts) >= 2:
+                raw = parts[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+                raw = raw.strip()
+            # else: no code block found, try raw
 
         extracted = json.loads(raw)
         if not isinstance(extracted, dict):

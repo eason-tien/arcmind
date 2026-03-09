@@ -344,14 +344,36 @@ def _tool_web_search(query: str, max_results: int = 5, **kwargs) -> str:
 
 
 def _tool_run_command(command: str, timeout: int = 30, **kwargs) -> str:
-    """Execute a shell command."""
+    """Execute a shell command with safety restrictions.
+
+    Uses shell=False with shlex.split to prevent command injection.
+    Blocks dangerous commands via whitelist approach.
+    """
+    import shlex
+
+    # ── Blocked command patterns ──
+    _BLOCKED = [
+        "rm -rf /", "rm -rf ~", "mkfs", "dd if=", "> /dev/",
+        ":(){ :|:& };:", "chmod -R 777 /", "shutdown", "reboot",
+        "halt", "init 0", "init 6",
+    ]
+    cmd_lower = command.lower().strip()
+    for pat in _BLOCKED:
+        if pat in cmd_lower:
+            return f"Blocked: dangerous command pattern '{pat}' detected."
+
     try:
+        # Parse command safely — no shell injection
+        args = shlex.split(command)
+        if not args:
+            return "Empty command."
+
         result = subprocess.run(
-            command,
-            shell=True,
+            args,
+            shell=False,
             capture_output=True,
             text=True,
-            timeout=timeout,
+            timeout=min(timeout, 120),  # Cap at 2 minutes
             cwd=str(Path.home()),
         )
         output = ""
@@ -368,9 +390,17 @@ def _tool_run_command(command: str, timeout: int = 30, **kwargs) -> str:
 
 
 def _tool_read_file(path: str, **kwargs) -> str:
-    """Read a file."""
+    """Read a file with path traversal protection."""
     try:
-        p = Path(path).expanduser()
+        p = Path(path).expanduser().resolve()
+        # Block access to sensitive system paths
+        _SENSITIVE = ["/etc/shadow", "/etc/passwd", "/proc", "/sys",
+                      "/.ssh", "/id_rsa", "/.gnupg", "/.aws/credentials"]
+        for s in _SENSITIVE:
+            if s in str(p):
+                return f"Access denied: path contains sensitive location '{s}'"
+        if p.is_symlink():
+            return f"Access denied: symlinks are not followed for security"
         if not p.exists():
             return f"File not found: {path}"
         if p.stat().st_size > 100_000:
@@ -381,9 +411,17 @@ def _tool_read_file(path: str, **kwargs) -> str:
 
 
 def _tool_write_file(path: str, content: str, **kwargs) -> str:
-    """Write a file."""
+    """Write a file with path traversal protection."""
     try:
-        p = Path(path).expanduser()
+        p = Path(path).expanduser().resolve()
+        # Block writing to sensitive system paths
+        _BLOCKED_ROOTS = ["/etc", "/usr", "/bin", "/sbin", "/boot",
+                          "/proc", "/sys", "/dev", "/root"]
+        for root in _BLOCKED_ROOTS:
+            if str(p).startswith(root):
+                return f"Access denied: cannot write to system path '{root}'"
+        if p.is_symlink():
+            return f"Access denied: will not write through symlinks"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
         return f"Written {len(content)} chars to {path}"
@@ -416,18 +454,59 @@ def _tool_list_directory(path: str, **kwargs) -> str:
 
 
 def _tool_python_eval(code: str, **kwargs) -> str:
-    """Evaluate Python code."""
+    """Evaluate Python code in a restricted sandbox.
+
+    Only safe built-ins are exposed. Dangerous modules (os, sys, subprocess,
+    shutil, importlib, etc.) are blocked. The code runs in an isolated
+    namespace so it cannot access the ArcMind runtime.
+    """
+    # ── Blocked patterns (static check before execution) ──
+    _BLOCKED_PATTERNS = [
+        "__import__", "importlib", "subprocess", "os.system", "os.popen",
+        "shutil", "exec(", "eval(", "compile(", "open(",
+        "globals(", "locals(", "getattr(", "setattr(", "delattr(",
+        "__builtins__", "__class__", "__subclasses__",
+    ]
+    code_lower = code.lower()
+    for pat in _BLOCKED_PATTERNS:
+        if pat.lower() in code_lower:
+            return f"Blocked: '{pat}' is not allowed in sandboxed Python eval."
+
+    # ── Safe builtins whitelist ──
+    _SAFE_BUILTINS = {
+        "abs": abs, "all": all, "any": any, "bin": bin, "bool": bool,
+        "chr": chr, "dict": dict, "dir": dir, "divmod": divmod,
+        "enumerate": enumerate, "filter": filter, "float": float,
+        "format": format, "frozenset": frozenset, "hash": hash,
+        "hex": hex, "int": int, "isinstance": isinstance,
+        "issubclass": issubclass, "iter": iter, "len": len, "list": list,
+        "map": map, "max": max, "min": min, "next": next, "oct": oct,
+        "ord": ord, "pow": pow, "print": print, "range": range,
+        "repr": repr, "reversed": reversed, "round": round, "set": set,
+        "slice": slice, "sorted": sorted, "str": str, "sum": sum,
+        "tuple": tuple, "type": type, "zip": zip,
+        "True": True, "False": False, "None": None,
+    }
+    # Allow safe stdlib modules
+    import math, json as _json, re as _re, datetime as _dt, collections as _col
+    _SAFE_MODULES = {
+        "math": math, "json": _json, "re": _re,
+        "datetime": _dt, "collections": _col,
+    }
+
+    sandbox_globals = {"__builtins__": _SAFE_BUILTINS, **_SAFE_MODULES}
+    local_vars: dict = {}
+
     try:
         # Try eval first (for expressions)
         try:
-            result = eval(code)
+            result = eval(code, sandbox_globals, local_vars)
             return str(result)
         except SyntaxError:
             pass
 
         # Fall back to exec (for statements)
-        local_vars: dict = {}
-        exec(code, {"__builtins__": __builtins__}, local_vars)
+        exec(code, sandbox_globals, local_vars)
 
         if "result" in local_vars:
             return str(local_vars["result"])

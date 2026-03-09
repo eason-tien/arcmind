@@ -296,16 +296,19 @@ def _execute_fix(error_info: dict, fix: dict) -> bool:
         logger.info("[SmartRepair] Fix requires manual action: %s", fix.get("fix_action"))
         return False
     
-    # 安全檢查：只允許特定修復類型
+    # 安全檢查：只允許特定修復類型（白名單模式）
     safe_types = ["pip_install"]
     if fix_type not in safe_types:
         logger.warning("[SmartRepair] Fix type '%s' not auto-executable", fix_type)
         return False
-    
-    # 基本啟發式安全檢查
-    if any(danger in fix_cmd for danger in ["rm ", "sudo", "chmod", "> /", "| sh"]):
-        logger.warning("[SmartRepair] Dangerous command blocked: %s", fix_cmd)
-        return False
+
+    # 白名單驗證：pip install 命令必須嚴格匹配已知模式
+    import re
+    if fix_type == "pip_install":
+        # Only allow: /path/to/pip install <package-name>
+        if not re.match(r'^.*/pip\s+install\s+[a-zA-Z0-9_][a-zA-Z0-9_.=-]*$', fix_cmd):
+            logger.warning("[SmartRepair] pip command does not match safe pattern: %s", fix_cmd)
+            return False
         
     # 高階反思檢查 (Reflection Loop)
     if not _reflect_on_fix(error_info, fix):

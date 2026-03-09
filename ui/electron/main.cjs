@@ -6,6 +6,8 @@ const url = require('url');
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow;
 
+const isDev = process.env.NODE_ENV === 'development' || !!process.env.ELECTRON_START_URL;
+
 async function checkMicPermission() {
     if (process.platform === 'darwin') {
         const status = systemPreferences.getMediaAccessStatus('microphone');
@@ -24,8 +26,9 @@ function createWindow() {
         height: 800,
         titleBarStyle: 'hiddenInset', // Mac frameless style but keeps traffic lights
         webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false, // Ease of dev
+            nodeIntegration: false,      // Security: disable Node in renderer
+            contextIsolation: true,      // Security: isolate preload from page
+            devTools: isDev,             // Only allow devtools in development
         }
     });
 
@@ -55,8 +58,10 @@ function createWindow() {
     // Load the index.html of the app.
     mainWindow.loadURL(startUrl);
 
-    // Open the DevTools to see why the screen is black
-    mainWindow.webContents.openDevTools();
+    // Only open DevTools in development mode
+    if (isDev) {
+        mainWindow.webContents.openDevTools();
+    }
 
     // Route renderer console to terminal
     mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
@@ -72,7 +77,10 @@ function createWindow() {
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
-app.commandLine.appendSwitch('ignore-certificate-errors'); // Helps with HTTP dev
+// Only ignore certificate errors in development
+if (isDev) {
+    app.commandLine.appendSwitch('ignore-certificate-errors');
+}
 app.whenReady().then(async () => {
     await checkMicPermission();
     createWindow();

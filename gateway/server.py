@@ -51,11 +51,17 @@ class ActivityBroadcaster:
     """
     Global broadcaster for sending real-time agent activity logs
     to connected OpenClaw frontend dashboards.
+    Uses a list but caps max connections to prevent memory leaks.
     """
+    _MAX_CONNECTIONS = 100
+
     def __init__(self):
         self._connections: list[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
+        if len(self._connections) >= self._MAX_CONNECTIONS:
+            await websocket.close(code=4003, reason="Too many dashboard connections")
+            return
         await websocket.accept()
         self._connections.append(websocket)
         logger.info("[ActivityBroadcaster] Dashboard connected. Active: %d", len(self._connections))
@@ -63,18 +69,17 @@ class ActivityBroadcaster:
     def disconnect(self, websocket: WebSocket):
         if websocket in self._connections:
             self._connections.remove(websocket)
-            logger.info("[ActivityBroadcaster] Dashboard disconnected. Active: %d", len(self._connections))
 
     async def broadcast(self, message: dict):
         if not self._connections:
             return
         dead_connections = []
-        for connection in self._connections:
+        for connection in list(self._connections):
             try:
                 await connection.send_json(message)
             except Exception:
                 dead_connections.append(connection)
-        
+
         for dead in dead_connections:
             self.disconnect(dead)
 
@@ -317,11 +322,11 @@ async def _handle_system_command(command: str, ctx: SessionContext) -> str:
         return (
             f"💚 ArcMind Gateway 運行中\n"
             f"Sessions: {session_manager.active_count()}\n"
-            f"Version: 0.3.0"
+            f"Version: 0.4.0"
         )
 
     elif command == "/version":
-        return "ArcMind v0.3.0 (Gateway Architecture)"
+        return "ArcMind v0.4.0 (Gateway Architecture)"
 
     elif command.startswith("/install "):
         url = command[len("/install "):].strip()
@@ -414,7 +419,10 @@ async def _handle_agent_task(
             model_hint=model_override or None,
         )
 
-        result = await asyncio.to_thread(main_loop.run, loop_input)
+        result = await asyncio.wait_for(
+            asyncio.to_thread(main_loop.run, loop_input),
+            timeout=300,  # 5 minute max for any single request
+        )
 
         # Record token usage
         if result.tokens_used:
@@ -548,7 +556,8 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         # Wait for initial handshake
         init_data = await asyncio.wait_for(websocket.receive_json(), timeout=10)
-        session_id = init_data.get("session_id", f"ws_{id(websocket)}")
+        import uuid as _uuid
+        session_id = init_data.get("session_id", f"ws_{_uuid.uuid4().hex[:12]}")
         user_id = init_data.get("user_id", "ws_user")
 
         logger.info("[Gateway/WS] connected: session=%s, user=%s", session_id, user_id)
@@ -591,7 +600,8 @@ async def websocket_endpoint(websocket: WebSocket):
             })
 
             # Process in background to avoid blocking the WS loop
-            asyncio.create_task(_ws_process_and_respond(websocket, msg))
+            task = asyncio.create_task(_ws_process_and_respond(websocket, msg))
+            task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
 
     except WebSocketDisconnect:
         logger.info("[Gateway/WS] disconnected: session=%s", session_id)
@@ -656,78 +666,7 @@ async def chat_endpoint(req: ChatRequest):
     )
 
 
-@router.post("/v1/chat/audio", response_model=ChatResponse)
-async def chat_audio_endpoint(
-    audio: UploadFile = File(...),
-    session_id: str = "1",
-    user_id: str = "api"
-):
-    """
-    REST chat endpoint that accepts an audio blob (webm/wav), 
-    transcribes it using Whisper STT, and processes it through the main pipeline.
-    """
-    if not audio:
-        raise HTTPException(status_code=400, detail="No audio file provided")
-
-    # Save uploaded file temporarily
-    temp_dir = Path(tempfile.gettempdir()) / "arcmind_api_uploads"
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    
-    file_extension = audio.filename.split(".")[-1] if audio.filename else "webm"
-    temp_path = temp_dir / f"upload_{int(time.time())}.{file_extension}"
-    
-    try:
-        content = await audio.read()
-        temp_path.write_bytes(content)
-        
-        # 1. Transcribe audio to text
-        from channels.voice import transcribe
-        text = transcribe(str(temp_path))
-        
-        if not text:
-            raise HTTPException(status_code=400, detail="Could not transcribe audio")
-            
-        logger.info("[Gateway/Audio] Transcribed text: %s", text)
-        
-        # 2. Process message through main gateway pipeline
-        msg = InboundMessage.from_api(
-            command=text,
-            user_id=user_id,
-            session_id=session_id,
-        )
-        msg.metadata["source"] = "voice_rest"
-
-        response = await process_message(msg)
-        
-        # 3. Generate TTS audio response
-        audio_base64 = None
-        try:
-            from channels.voice import text_to_voice
-            voice_name = "zh-TW-HsiaoChenNeural" # Or read from config
-            ogg_path = await text_to_voice(response.text, voice_name)
-            
-            import base64
-            audio_bytes = ogg_path.read_bytes()
-            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-        except Exception as tts_err:
-            logger.error("[Gateway/Audio] TTS skipped or failed: %s", tts_err)
-
-        # We also return the transcript so the UI knows what the user actually "said"
-        return {
-            "text": response.text,
-            "session_id": response.session_id,
-            "elapsed_s": response.metadata.get("elapsed_s", 0.0),
-            "transcript": text,
-            "audio_base64": audio_base64
-        }
-
-    except Exception as e:
-        logger.exception("[Gateway/Audio] Audio processing failed")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if temp_path.exists():
-            temp_path.unlink()
-
+# NOTE: Duplicate /v1/chat/audio endpoint removed — see the first definition above.
 
 
 # ── Gateway Status & Sync ───────────────────────────────────────────────────
@@ -769,7 +708,7 @@ def get_chat_history(session_id: str):
 def gateway_status():
     return {
         "status": "running",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "architecture": "OpenClaw-style Gateway",
         "sessions": session_manager.summary(),
     }

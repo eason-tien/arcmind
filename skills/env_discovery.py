@@ -333,13 +333,14 @@ def _find_configs(inputs: dict) -> dict:
     for category, filenames in patterns.items():
         for fn in filenames:
             try:
-                # Use find/where for speed instead of Python walk
+                # Use find/where for speed instead of Python walk — shell=False for safety
                 if _IS_WINDOWS:
-                    cmd = f'where /r "{root}" {fn} 2>nul'
+                    args = ["where", "/r", str(root), fn]
                 else:
-                    cmd = f'find "{root}" -maxdepth {max_depth} -name "{fn}" -type f 2>/dev/null | head -20'
+                    args = ["find", str(root), "-maxdepth", str(max_depth),
+                            "-name", fn, "-type", "f"]
 
-                out = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
+                out = subprocess.run(args, shell=False, capture_output=True, text=True, timeout=10)
                 for line in out.stdout.strip().split("\n"):
                     if line.strip():
                         found.append({"category": category, "file": fn, "path": line.strip()})

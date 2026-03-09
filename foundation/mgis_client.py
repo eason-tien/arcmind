@@ -44,10 +44,14 @@ class MGISClient:
         url = f"{self._base}{path}"
         try:
             r = httpx.get(url, headers=self._headers, params=params,
-                          timeout=settings.mgis_timeout)
+                          timeout=min(settings.mgis_timeout, 30))
             if r.status_code >= 400:
                 raise MGISError(r.status_code, r.text[:512])
-            return r.json()
+            try:
+                return r.json()
+            except (ValueError, json.JSONDecodeError):
+                logger.warning("MGIS returned non-JSON response for %s", path)
+                return {"error": "Invalid JSON response", "offline": True}
         except httpx.RequestError as e:
             logger.warning("MGIS unreachable: %s", e)
             return {"error": str(e), "offline": True}
@@ -56,10 +60,14 @@ class MGISClient:
         url = f"{self._base}{path}"
         try:
             r = httpx.post(url, headers=self._headers, json=body,
-                           timeout=settings.mgis_timeout)
+                           timeout=min(settings.mgis_timeout, 30))
             if r.status_code >= 400:
                 raise MGISError(r.status_code, r.text[:512])
-            return r.json()
+            try:
+                return r.json()
+            except (ValueError, json.JSONDecodeError):
+                logger.warning("MGIS returned non-JSON response for %s", path)
+                return {"error": "Invalid JSON response", "offline": True}
         except httpx.RequestError as e:
             logger.warning("MGIS unreachable: %s", e)
             return {"error": str(e), "offline": True}

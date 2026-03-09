@@ -21,7 +21,10 @@ def _get_allowed_roots() -> list[Path]:
 
 
 def _check_path(path: Path) -> None:
-    """確認路徑在允許範圍內"""
+    """確認路徑在允許範圍內，且不是符號鏈接"""
+    # Block symlinks to prevent TOCTOU attacks
+    if path.exists() and path.is_symlink():
+        raise PermissionError(f"Symlinks are not allowed: '{path}'")
     resolved = path.resolve()
     for root in _get_allowed_roots():
         try:

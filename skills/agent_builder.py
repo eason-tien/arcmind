@@ -277,14 +277,31 @@ class AgentBuilder:
                 }
             
             elif step_type == "condition":
-                # 条件分支
+                # 条件分支 — 安全表达式评估（仅允许简单比较）
                 condition = step_config.get("condition", "")
                 true_branch = step_config.get("true_branch", {})
                 false_branch = step_config.get("false_branch", {})
-                
-                # 简单的条件评估
-                result = eval(condition, {"inputs": inputs}) if condition else True
-                
+
+                # Safe condition evaluation — only allow simple key lookups
+                import ast
+                result = True
+                if condition:
+                    try:
+                        # Only allow literal expressions and simple comparisons
+                        tree = ast.parse(condition, mode='eval')
+                        # Walk AST to ensure no function calls, imports, or attributes
+                        for node in ast.walk(tree):
+                            if isinstance(node, (ast.Call, ast.Import, ast.ImportFrom,
+                                                 ast.Attribute, ast.Lambda)):
+                                raise ValueError(f"Unsafe expression: {type(node).__name__} not allowed")
+                        # Safe to evaluate with restricted namespace
+                        result = eval(compile(tree, '<condition>', 'eval'),
+                                      {"__builtins__": {}}, {"inputs": inputs})
+                    except ValueError as ve:
+                        return {"success": False, "error": f"Condition blocked: {ve}"}
+                    except Exception as ce:
+                        return {"success": False, "error": f"Condition error: {ce}"}
+
                 return {
                     "success": True,
                     "step_type": "condition",

@@ -130,31 +130,35 @@ def report_error(
     })
     
     try:
-        result = subprocess.run(
-            ["curl", "-s", "-X", "POST",
-             f"https://api.github.com/repos/{GITHUB_REPO}/issues",
-             "-H", f"Authorization: Bearer {token}",
-             "-H", "Accept: application/vnd.github.v3+json",
-             "-d", payload],
-            capture_output=True, text=True, timeout=15
+        import httpx
+        resp = httpx.post(
+            f"https://api.github.com/repos/{GITHUB_REPO}/issues",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github.v3+json",
+            },
+            json={
+                "title": f"🔴 [{severity.upper()}] {title}",
+                "body": body,
+                "labels": labels,
+            },
+            timeout=15,
         )
-        
-        if result.returncode == 0:
-            data = json.loads(result.stdout)
-            issue_url = data.get("html_url")
-            issue_number = data.get("number")
-            
-            if issue_url:
-                logger.info(f"[ErrorReporter] Issue #{issue_number} created: {issue_url}")
-                return {"success": True, "issue_url": issue_url, "issue_number": issue_number}
-            else:
-                error_msg = data.get("message", "Unknown error")
-                logger.warning(f"[ErrorReporter] GitHub API error: {error_msg}")
-                return {"success": False, "message": error_msg, "logged_locally": True}
-        
+        data = resp.json()
+        issue_url = data.get("html_url")
+        issue_number = data.get("number")
+
+        if issue_url:
+            logger.info("[ErrorReporter] Issue #%s created: %s", issue_number, issue_url)
+            return {"success": True, "issue_url": issue_url, "issue_number": issue_number}
+        else:
+            error_msg = data.get("message", "Unknown error")
+            logger.warning("[ErrorReporter] GitHub API error: %s", error_msg)
+            return {"success": False, "message": error_msg, "logged_locally": True}
+
     except Exception as e:
-        logger.warning(f"[ErrorReporter] Failed to create issue: {e}")
-    
+        logger.warning("[ErrorReporter] Failed to create issue: %s", e)
+
     return {"success": False, "message": "Failed to create GitHub issue", "logged_locally": True}
 
 

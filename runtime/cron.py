@@ -161,7 +161,7 @@ class CronSystem:
                 action=f"cron_execute:{skill_name}",
                 context={"cron_name": name, "input_data": input_data},
             )
-            if not audit.get("approved", True):
+            if not audit.get("approved", False):  # fail-closed: default deny
                 logger.warning("Cron %s blocked by Governor: %s",
                                name, audit.get("reason"))
                 return
