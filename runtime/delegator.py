@@ -94,6 +94,49 @@ _CAPABILITY_KEYWORDS: dict[str, list[str]] = {
         "windows", "powershell", "远程", "遠端", "remote",
         "151", "windows pc",
     ],
+    # security (template: security)
+    "security": [
+        "安全", "security", "漏洞", "vulnerability", "渗透", "滲透",
+        "penetration", "audit", "owasp", "xss", "sql injection", "cve",
+    ],
+    # data engineering (template: data_engineer)
+    "etl": [
+        "etl", "pipeline", "数据管线", "數據管線", "清洗", "transform",
+    ],
+    "database": [
+        "数据库", "資料庫", "database", "sql", "postgres", "mysql",
+        "migration", "schema", "索引", "index",
+    ],
+    # frontend (template: frontend)
+    "frontend": [
+        "前端", "frontend", "react", "vue", "css", "html", "ui",
+        "组件", "組件", "component", "页面", "頁面", "page",
+    ],
+    # design (template: designer)
+    "design": [
+        "设计", "設計", "design", "ux", "原型", "prototype",
+        "wireframe", "线框", "線框", "figma", "mockup",
+    ],
+    # copywriting (template: copywriter)
+    "copywriting": [
+        "文案", "copy", "copywriting", "seo", "行销", "行銷",
+        "marketing", "内容", "內容", "content", "blog",
+    ],
+    # finance (template: financial)
+    "finance": [
+        "财务", "財務", "finance", "预算", "預算", "budget",
+        "投资", "投資", "investment", "会计", "會計", "accounting",
+    ],
+    # translation (template: translator)
+    "translation": [
+        "翻译", "翻譯", "translate", "translation", "i18n",
+        "本地化", "localization", "多语", "多語",
+    ],
+    # SRE (template: sre)
+    "sre": [
+        "sre", "可靠性", "reliability", "incident", "事件响应", "事件響應",
+        "oncall", "slo", "sli", "error budget",
+    ],
 }
 
 # Keywords that signal multi-agent collaboration
@@ -113,6 +156,7 @@ class DelegationMatch:
     system_prompt: str
     capability: str
     confidence: float = 0.0
+    hire_suggestion: Optional[str] = None  # template_id if agent needs hiring first
 
 
 @dataclass
@@ -196,6 +240,25 @@ class Delegator:
         best_cap, best_score = scores[0]
         match = self._find_best_agent(best_cap)
         if not match:
+            # No active agent — check if a template could handle this
+            try:
+                from runtime.agent_templates import template_manager
+                suggestion = template_manager.suggest_hire(command)
+                if suggestion:
+                    logger.info("[Delegator] No active agent for '%s', suggest hiring: %s",
+                                best_cap, suggestion.template_id)
+                    # Return a match pointing to CEO but with hire_suggestion
+                    return DelegationMatch(
+                        agent_id="main",
+                        agent_name="CEO (suggest hire)",
+                        model="",
+                        system_prompt="",
+                        capability=best_cap,
+                        confidence=min(best_score / 3.0, 1.0),
+                        hire_suggestion=suggestion.template_id,
+                    )
+            except Exception:
+                pass
             return None
 
         match.confidence = min(best_score / 3.0, 1.0)  # Normalize to 0-1

@@ -92,3 +92,55 @@ def list_agents():
 def lifecycle_summary():
     from runtime.lifecycle import lifecycle
     return lifecycle.summary()
+
+
+# ── Agent Template Library (Hire / Fire) ─────────────────────────────────────
+
+class HireRequest(BaseModel):
+    template_id: str
+    custom_model: Optional[str] = None
+
+
+@router.get("/templates")
+def list_templates():
+    """列出所有可用的 Agent 模板。"""
+    from runtime.agent_templates import template_manager
+    return {"templates": template_manager.list_templates()}
+
+
+@router.get("/templates/{category}")
+def list_templates_by_category(category: str):
+    """按分類列出 Agent 模板。"""
+    from runtime.agent_templates import template_manager
+    return {"templates": template_manager.list_by_category(category)}
+
+
+@router.post("/hire")
+def hire_agent(req: HireRequest):
+    """CEO 從模板庫聘用 Agent。"""
+    from runtime.agent_templates import template_manager
+    result = template_manager.hire(req.template_id, req.custom_model)
+    if not result["success"]:
+        raise HTTPException(400, result.get("error", "Hire failed"))
+    return result
+
+
+@router.post("/fire/{agent_id}")
+def fire_agent(agent_id: str):
+    """CEO 解僱已聘用的 Agent。"""
+    from runtime.agent_templates import template_manager
+    result = template_manager.fire(agent_id)
+    if not result["success"]:
+        raise HTTPException(400, result.get("error", "Fire failed"))
+    return result
+
+
+@router.get("/roster")
+def agent_roster():
+    """查看完整的 Agent 花名冊（已聘用 + 可聘模板）。"""
+    from runtime.agent_registry import agent_registry
+    from runtime.agent_templates import template_manager
+    return {
+        "active_agents": agent_registry.list_agents(),
+        "available_templates": template_manager.list_templates(),
+    }
