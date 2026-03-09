@@ -236,6 +236,93 @@ async def handle_iamp_bridge(event: Event) -> None:
             payload=payload,
             correlation_id=event.correlation_id,
         ))
+    elif msg_type == "handoff":
+        event_bus.emit(Event(
+            type=EventType.AGENT_HANDOFF,
+            source=event.source,
+            payload=payload,
+            correlation_id=event.correlation_id,
+        ))
+
+
+# ── Agent Handoff Handler ───────────────────────────────────────────────────
+
+@event_bus.on(EventType.AGENT_HANDOFF)
+async def handle_agent_handoff(event: Event) -> None:
+    """
+    Agent 任務交接 → 將任務從一個 Agent 轉移到另一個 Agent。
+    payload 預期：
+      - from_agent: str (交出方)
+      - to_agent: str (接收方)
+      - task_id: str
+      - command: str (原始指令)
+      - context: dict (交接上下文，含先前結果)
+      - reason: str (交接原因)
+    """
+    payload = event.payload
+    from_agent = payload.get("from_agent") or payload.get("sender", "unknown")
+    to_agent = payload.get("to_agent") or payload.get("receiver", "unknown")
+    task_id = payload.get("task_id")
+    command = payload.get("command") or payload.get("original_command", "")
+    context = payload.get("context", {})
+    reason = payload.get("reason", "Handoff between agents")
+
+    logger.info("[Handler:handoff] %s → %s task=%s reason=%s",
+                from_agent, to_agent, task_id, reason)
+
+    # Write handoff to shared memory for continuity
+    try:
+        from runtime.iamp import shared_memory_manager
+        if task_id:
+            mem = shared_memory_manager.get(str(task_id))
+            mem.write(from_agent, "handoff_context", {
+                "from": from_agent,
+                "to": to_agent,
+                "reason": reason,
+                "prior_context": context,
+            })
+    except Exception as e:
+        logger.warning("[Handler:handoff] SharedMemory write failed: %s", e)
+
+    # Send IAMP message to target agent
+    try:
+        from runtime.iamp import message_bus, MessageType
+        message_bus.send(
+            sender=from_agent,
+            receiver=to_agent,
+            msg_type=MessageType.HANDOFF,
+            payload={
+                "command": command,
+                "context": context,
+                "reason": reason,
+                "from_agent": from_agent,
+            },
+            task_id=str(task_id) if task_id else None,
+        )
+    except Exception as e:
+        logger.warning("[Handler:handoff] IAMP notify failed: %s", e)
+
+    # Execute via target agent through OODA Loop
+    if command:
+        try:
+            from loop.main_loop import main_loop, LoopInput
+            inp = LoopInput(
+                command=f"[HANDOFF from {from_agent}] {command}",
+                source="handoff",
+                skill_hint=payload.get("skill_hint"),
+                context={
+                    "handoff_from": from_agent,
+                    "handoff_to": to_agent,
+                    "reason": reason,
+                    **context,
+                },
+            )
+            result = await asyncio.to_thread(main_loop.run, inp)
+            logger.info("[Handler:handoff] %s → %s done: success=%s elapsed=%.2fs",
+                        from_agent, to_agent, result.success, result.elapsed_s)
+        except Exception as e:
+            logger.error("[Handler:handoff] %s → %s failed: %s",
+                         from_agent, to_agent, e)
 
 
 # ── Webhook Handler ──────────────────────────────────────────────────────────

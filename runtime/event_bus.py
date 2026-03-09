@@ -60,6 +60,7 @@ class EventType(str, Enum):
     IAMP_MESSAGE = "iamp_message"
     TASK_CREATED = "task_created"
     TASK_FAILED = "task_failed"
+    AGENT_HANDOFF = "agent_handoff"
 
 
 class EventPriority(int, Enum):
