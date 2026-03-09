@@ -136,17 +136,27 @@ def _collect_cron_health() -> list:
 
 
 def _collect_agent_usage() -> dict:
-    """Collect agent configuration info."""
+    """Collect agent configuration and IAMP communication stats."""
     try:
         from runtime.agent_registry import agent_registry
-        agents = agent_registry.list_agents()
+        agents = agent_registry.list_agents()  # Returns list of dicts
+
+        # IAMP message bus stats
+        iamp_stats = {}
+        try:
+            from runtime.iamp import message_bus
+            iamp_stats = message_bus.stats()
+        except Exception:
+            pass
+
         return {
             "count": len(agents),
             "agents": [
-                {"id": a.id, "name": a.name, "model": a.model,
-                 "purpose": a.purpose, "enabled": a.enabled}
+                {"id": a["id"], "name": a["name"], "model": a.get("default_model", ""),
+                 "capabilities": a.get("capabilities", []), "enabled": a.get("enabled", True)}
                 for a in agents
             ],
+            "iamp": iamp_stats,
         }
     except Exception as e:
         return {"error": str(e)}

@@ -3,13 +3,14 @@ ArcMind 主循環 — OODA Loop
 Observe → Orient → Decide → Act → [學習]
 
 每個請求都走完整的五個階段：
-1. Observe:  收集輸入（使用者指令 / Cron / MGIS Proactive）
-2. Orient:   查詢 MGIS 記憶 + 分析目標狀態 + 注入 Persona
-3. Decide:   模型路由 + Planner 生成步驟 + Governor 審計
-4. Act:      Skill 執行
-5. Learn:    Feedback 寫回 MGIS
+1. Observe:  收集輸入 + 環境感知 + Agent 狀態監控
+2. Orient:   查詢記憶 + 分析目標 + 注入 Persona + 委派歷史
+3. Decide:   模型路由 + 多 Agent 協作規劃 + Governor 審計
+4. Act:      Skill / Agent 委派 / Pipeline 執行
+5. Learn:    Feedback + Agent 績效追蹤 + 因果記憶
 
 v0.3.0: 整合 Gateway Session 管理和 Persona Injector。
+v0.5.0: 整合多 Agent 協作、IAMP、Pipeline 執行。
 """
 from __future__ import annotations
 
@@ -108,6 +109,18 @@ class MainLoop:
             except Exception:
                 pass
 
+            # Agent 狀態感知 — CEO 掌握全公司員工動態
+            try:
+                from runtime.agent_registry import agent_registry
+                from runtime.iamp import message_bus
+                agent_status = {
+                    "total_agents": len(agent_registry.list_enabled()),
+                    "message_bus": message_bus.stats(),
+                }
+                inp.context["agent_status"] = agent_status
+            except Exception:
+                pass
+
             # 建立 Task 記錄
             task_id = lifecycle.tasks.create(
                 title=inp.command[:200],
@@ -155,6 +168,26 @@ class MainLoop:
                 ]
             except Exception:
                 goal_context = []
+
+            # 委派歷史感知 — 讓 CEO 了解近期 Agent 活動
+            try:
+                from runtime.iamp import message_bus, MessageType
+                recent_completions = [
+                    m for m in message_bus.get_inbox("main", limit=10)
+                    if m.msg_type in (MessageType.TASK_COMPLETE, MessageType.TASK_ESCALATE)
+                ]
+                if recent_completions:
+                    inp.context["recent_agent_activity"] = [
+                        {
+                            "from": m.sender,
+                            "type": m.msg_type.value,
+                            "task_id": m.task_id,
+                            "summary": str(m.payload.get("output", m.payload.get("reason", "")))[:100],
+                        }
+                        for m in recent_completions[:5]
+                    ]
+            except Exception:
+                pass
 
             # ── 3. DECIDE ────────────────────────────────────────────────────
             logger.info("[DECIDE] Planning and routing...")
@@ -264,16 +297,25 @@ class MainLoop:
                     "command": inp.command,
                 })
             else:
-                # 嘗試 OpenClaw（若啟用）
-                from protocol.openclaw_adapter import openclaw
-                if openclaw.enabled:
-                    skill_result = openclaw.invoke_skill(skill_name, {
-                        **inp.context, "command": inp.command,
-                    })
+                # 嘗試多 Agent 協作路由
+                multi_agent_result = self._try_multi_agent(inp, task_id)
+                if multi_agent_result:
+                    skill_result = multi_agent_result
+                    skill_name = "_multi_agent"
                 else:
-                    # Fallback: 直接用模型回應
-                    skill_result = self._model_fallback(inp, memory_hits, model_override=model_used)
-                    skill_name = "_model_direct"
+                    # 嘗試 OpenClaw（若啟用）
+                    try:
+                        from protocol.openclaw_adapter import openclaw
+                        if openclaw.enabled:
+                            skill_result = openclaw.invoke_skill(skill_name, {
+                                **inp.context, "command": inp.command,
+                            })
+                        else:
+                            skill_result = self._model_fallback(inp, memory_hits, model_override=model_used)
+                            skill_name = "_model_direct"
+                    except ImportError:
+                        skill_result = self._model_fallback(inp, memory_hits, model_override=model_used)
+                        skill_name = "_model_direct"
 
             skill_used = skill_name
             lifecycle.tasks.start_verifying(task_id)
@@ -362,6 +404,26 @@ class MainLoop:
                 except Exception:
                     pass
 
+            # ── Agent 績效追蹤 ──
+            if skill_used in ("_multi_agent", "_model_direct") and skill_result:
+                try:
+                    delegated_to = skill_result.get("delegated_to") or skill_result.get("agent_id")
+                    if delegated_to:
+                        from runtime.iamp import message_bus, MessageType
+                        message_bus.send(
+                            sender="main",
+                            receiver=delegated_to,
+                            msg_type=MessageType.STATUS_REPORT,
+                            payload={
+                                "success": not bool(error),
+                                "tokens": tokens_used,
+                                "elapsed_s": round(time.monotonic() - start, 3),
+                            },
+                            task_id=str(task_id),
+                        )
+                except Exception:
+                    pass
+
             elapsed = round(time.monotonic() - start, 3)
             return LoopResult(
                 success=not bool(error),
@@ -409,6 +471,37 @@ class MainLoop:
         這才是 OpenClaw 級別的執行力。
         """
         return "_model_direct"
+
+    def _try_multi_agent(self, inp: LoopInput, task_id: int) -> dict | None:
+        """
+        嘗試多 Agent 協作路由。
+        如果指令涉及多個專業領域，建立 Pipeline 執行。
+        返回 None 表示不適合多 Agent，交回單一路由。
+        """
+        try:
+            from runtime.delegator import delegator
+
+            plan = delegator.route_multi(inp.command)
+            if not plan or not plan.is_multi:
+                return None
+
+            logger.info("[ACT] Multi-agent plan: %s", plan.description)
+
+            result = delegator.execute_plan(plan, inp.command)
+
+            return {
+                "success": result.get("success", False),
+                "output": result.get("output", ""),
+                "tokens": result.get("total_tokens", 0),
+                "tool_calls": [],
+                "delegated_to": "pipeline",
+                "agent_id": "pipeline",
+                "plan": plan.description,
+                "steps": result.get("steps", 0),
+            }
+        except Exception as e:
+            logger.warning("[ACT] Multi-agent routing failed: %s", e)
+            return None
 
     def _model_fallback(self, inp: LoopInput, memory_hits: list,
                          model_override: str | None = None) -> dict:

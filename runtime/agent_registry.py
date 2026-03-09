@@ -182,6 +182,60 @@ class AgentRegistry:
         """List only enabled agents."""
         return [a for a in self._agents.values() if a.enabled]
 
+    # ── Tool-facing methods (called by tool_loop.py) ────────────────────────
+
+    def format_roster(self) -> str:
+        """Format all agents as a human-readable roster string."""
+        lines = ["## Zero-Human Company — Agent Roster", ""]
+        for a in self._agents.values():
+            status = "ON" if a.enabled else "OFF"
+            lines.append(f"**{a.name}** (`{a.id}`) [{status}]")
+            lines.append(f"  Model: {a.default_model}")
+            lines.append(f"  Purpose: {a.description}")
+            lines.append(f"  Capabilities: {', '.join(a.capabilities)}")
+            lines.append("")
+        lines.append(f"Total: {len(self._agents)} agents "
+                      f"({len(self.list_enabled())} enabled)")
+        return "\n".join(lines)
+
+    def add_agent(
+        self,
+        agent_id: str,
+        name: str,
+        model: str,
+        purpose: str,
+        capabilities: list | None = None,
+        system_prompt: str = "",
+    ) -> str:
+        """Add a new agent and persist to config."""
+        if agent_id in self._agents:
+            return f"Agent '{agent_id}' already exists. Use a different ID."
+
+        persona = AgentPersona(
+            id=agent_id,
+            name=name,
+            role=agent_id,
+            description=purpose,
+            system_prompt=system_prompt,
+            allowed_tools=["__all__"],
+            default_model=model,
+            capabilities=capabilities or [],
+            enabled=True,
+            purpose=purpose,
+        )
+        self.register(persona)
+        self.save_config()
+        return f"Agent '{name}' ({agent_id}) added successfully with model {model}."
+
+    def remove_agent(self, agent_id: str) -> str:
+        """Remove an agent and persist to config."""
+        if not self.unregister(agent_id):
+            if agent_id == "main":
+                return "Cannot remove the CEO (main) agent."
+            return f"Agent '{agent_id}' not found."
+        self.save_config()
+        return f"Agent '{agent_id}' removed successfully."
+
     # ── Persistence ──────────────────────────────────────────────────────────
 
     def save_config(self):
