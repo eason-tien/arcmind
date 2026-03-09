@@ -14,6 +14,7 @@ Handler 職責：
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -57,7 +58,7 @@ async def handle_cron_trigger(event: Event) -> None:
         except Exception as e:
             logger.warning("[Handler:cron] Governor check failed (proceeding): %s", e)
 
-    # 走 OODA Loop
+    # 走 OODA Loop (run in thread to avoid blocking asyncio event loop)
     try:
         from loop.main_loop import main_loop, LoopInput
         inp = LoopInput(
@@ -66,11 +67,22 @@ async def handle_cron_trigger(event: Event) -> None:
             skill_hint=skill_name,
             context={"cron_name": cron_name, **input_data},
         )
-        result = main_loop.run(inp)
+        result = await asyncio.to_thread(main_loop.run, inp)
         logger.info("[Handler:cron] %s done: success=%s elapsed=%.2fs",
                     cron_name, result.success, result.elapsed_s)
+        # Update cron run record AFTER actual execution
+        try:
+            from runtime.cron import cron_system
+            cron_system._update_run(cron_name, success=result.success)
+        except Exception:
+            pass
     except Exception as e:
         logger.error("[Handler:cron] %s failed: %s", cron_name, e)
+        try:
+            from runtime.cron import cron_system
+            cron_system._update_run(cron_name, success=False)
+        except Exception:
+            pass
 
 
 # ── Agent Complete Handler ───────────────────────────────────────────────────
@@ -78,47 +90,43 @@ async def handle_cron_trigger(event: Event) -> None:
 @event_bus.on(EventType.AGENT_COMPLETE)
 async def handle_agent_complete(event: Event) -> None:
     """
-    Sub-Agent 完成任務 → 更新 Lifecycle + 通知 CEO。
+    Sub-Agent 完成任務 → 更新 Lifecycle (if not already closed).
+
+    NOTE: Does NOT send IAMP messages to avoid infinite loop:
+      handler → IAMP.send → bridge → EventBus → handler → ...
+    The IAMP message that triggered this event already serves as CEO notification.
+
     payload 預期：
       - task_id: int
       - agent_id: str
       - output: Any
       - tokens: int
+      - success: bool (from MainLoop emit — task already closed, skip)
     """
     payload = event.payload
     task_id = payload.get("task_id")
     agent_id = payload.get("agent_id", "unknown")
 
+    # Skip if emitted by MainLoop itself (task already closed in LEARN phase)
+    if payload.get("success") is not None and event.source not in ("iamp:",):
+        logger.debug("[Handler:agent_complete] from MainLoop (already closed), skipping. task=%s", task_id)
+        return
+
     logger.info("[Handler:agent_complete] agent=%s task=%s", agent_id, task_id)
 
-    # Update lifecycle
+    # Update lifecycle — only if task is still open
     try:
         from runtime.lifecycle import lifecycle
         if task_id:
-            lifecycle.tasks.close(
-                task_id,
-                output_data={"output": str(payload.get("output", ""))[:500]},
-                tokens_used=payload.get("tokens", 0),
-            )
+            task = lifecycle.tasks.get(task_id)
+            if task and task["status"] not in ("closed", "failed"):
+                lifecycle.tasks.close(
+                    task_id,
+                    output_data={"output": str(payload.get("output", ""))[:500]},
+                    tokens_used=payload.get("tokens", 0),
+                )
     except Exception as e:
         logger.warning("[Handler:agent_complete] lifecycle update failed: %s", e)
-
-    # Notify CEO via IAMP
-    try:
-        from runtime.iamp import message_bus, MessageType
-        message_bus.send(
-            sender=agent_id,
-            receiver="main",
-            msg_type=MessageType.TASK_COMPLETE,
-            payload={
-                "task_id": str(task_id),
-                "output_summary": str(payload.get("output", ""))[:200],
-                "tokens": payload.get("tokens", 0),
-            },
-            task_id=str(task_id) if task_id else None,
-        )
-    except Exception as e:
-        logger.warning("[Handler:agent_complete] IAMP notify failed: %s", e)
 
 
 # ── Agent Escalate Handler ───────────────────────────────────────────────────
@@ -157,7 +165,7 @@ async def handle_agent_escalate(event: Event) -> None:
     except Exception as e:
         logger.warning("[Handler:escalate] IAMP notify failed: %s", e)
 
-    # Re-run via MainLoop as CEO
+    # Re-run via MainLoop as CEO (in thread to avoid blocking event loop)
     original_cmd = payload.get("original_command")
     if original_cmd:
         try:
@@ -167,7 +175,7 @@ async def handle_agent_escalate(event: Event) -> None:
                 source="escalation",
                 context={"escalated_from": agent_id, "reason": reason},
             )
-            result = main_loop.run(inp)
+            result = await asyncio.to_thread(main_loop.run, inp)
             logger.info("[Handler:escalate] CEO handled: success=%s", result.success)
         except Exception as e:
             logger.error("[Handler:escalate] CEO handling failed: %s", e)

@@ -168,7 +168,8 @@ class CronSystem:
                 },
                 priority=EventPriority.NORMAL,
             ))
-            self._update_run(name, success=True)
+            # NOTE: Don't mark success here — the handler executes async.
+            # _update_run is called by the handler after actual execution.
             return  # EventBus handler will execute the job
         except Exception as e:
             logger.warning("Cron %s EventBus emit failed, falling back to direct: %s", name, e)

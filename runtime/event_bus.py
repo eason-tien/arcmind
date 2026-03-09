@@ -35,6 +35,7 @@ ArcMind — Event-Driven Hybrid Bus
 from __future__ import annotations
 
 import asyncio
+import itertools
 import logging
 import time
 import uuid
@@ -115,6 +116,8 @@ class EventBus:
         self._wildcard_handlers: list[EventHandler] = []
         self._queue: asyncio.PriorityQueue | None = None
         self._max_queue_size = max_queue_size
+        # Monotonic counter to break ties in PriorityQueue (avoids comparing Event objects)
+        self._seq = itertools.count()
         self._running = False
         self._worker_task: asyncio.Task | None = None
         self._dead_letters: list[Event] = []
@@ -171,7 +174,9 @@ class EventBus:
 
         if self._running and self._queue is not None:
             try:
-                self._queue.put_nowait((event.priority.value, event.timestamp, event))
+                # Tuple: (priority, sequence, event) — sequence breaks ties
+                # so Python never compares Event objects directly.
+                self._queue.put_nowait((event.priority.value, next(self._seq), event))
             except asyncio.QueueFull:
                 logger.warning("[EventBus] Queue full, dropping event %s", event.id)
                 self._dead_letters.append(event)
@@ -224,7 +229,7 @@ class EventBus:
         logger.info("[EventBus] worker started")
         while self._running:
             try:
-                priority, ts, event = await asyncio.wait_for(
+                priority, _seq, event = await asyncio.wait_for(
                     self._queue.get(), timeout=1.0
                 )
                 await self._dispatch(event)

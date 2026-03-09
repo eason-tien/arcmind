@@ -141,23 +141,40 @@ class MessageBus:
             self._type_subscribers[msg_type].append(callback)
 
     def _bridge_to_event_bus(self, msg: AgentMessage) -> None:
-        """Bridge IAMP messages into the central EventBus for event-driven processing."""
-        try:
-            from runtime.event_bus import event_bus, Event, EventType
-            event_bus.emit(Event(
-                type=EventType.IAMP_MESSAGE,
-                source=f"iamp:{msg.sender}",
-                payload={
-                    "msg_type": msg.msg_type.value,
-                    "sender": msg.sender,
-                    "receiver": msg.receiver,
-                    "payload": msg.payload,
-                    "task_id": msg.task_id,
-                },
-                correlation_id=msg.task_id or "",
-            ))
-        except Exception as e:
-            logger.debug("[IAMP] EventBus bridge failed (non-fatal): %s", e)
+        """Bridge IAMP messages into the central EventBus for event-driven processing.
+
+        NOTE: Only bridges task_complete and task_escalate from sub-agents.
+        Messages FROM the event handler back to IAMP (receiver="main") are NOT
+        re-bridged, to prevent infinite loops:
+          IAMP → EventBus → handler → IAMP.send → bridge → EventBus → ...
+        """
+        # Guard: skip messages sent BY event handlers to prevent loops
+        if msg.receiver == "main" and msg.sender != "main":
+            # This is likely a notification FROM a handler back to CEO — skip
+            # (the handler already processed the original event)
+            pass
+        elif msg.sender == "main":
+            # CEO → sub-agent: don't bridge task_assign/status_report
+            # These are outbound commands, not inbound events
+            pass
+        else:
+            # Sub-agent → sub-agent or external → system: bridge it
+            try:
+                from runtime.event_bus import event_bus, Event, EventType
+                event_bus.emit(Event(
+                    type=EventType.IAMP_MESSAGE,
+                    source=f"iamp:{msg.sender}",
+                    payload={
+                        "msg_type": msg.msg_type.value,
+                        "sender": msg.sender,
+                        "receiver": msg.receiver,
+                        "payload": msg.payload,
+                        "task_id": msg.task_id,
+                    },
+                    correlation_id=msg.task_id or "",
+                ))
+            except Exception as e:
+                logger.debug("[IAMP] EventBus bridge failed (non-fatal): %s", e)
 
     def _notify(self, msg: AgentMessage):
         """Notify relevant subscribers."""
