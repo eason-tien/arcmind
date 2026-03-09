@@ -210,8 +210,15 @@ def escalate_task(inputs: dict) -> dict:
     if not task_id or not reason:
         return {"error": "task_id and reason are required."}
 
+    # Determine sender from task's assigned_to field
+    sender = inputs.get("sender", "unknown")
+    if sender == "unknown":
+        task_info = lifecycle.tasks.get(task_id)
+        if task_info:
+            sender = task_info.get("assigned_to", "unknown")
+
     message_bus.send(
-        sender="unknown",  # Will be filled by the caller's context
+        sender=sender,
         receiver="main",
         msg_type=MessageType.TASK_ESCALATE,
         payload={

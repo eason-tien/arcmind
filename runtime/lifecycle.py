@@ -103,7 +103,9 @@ class TaskManager:
 
     def create(self, title: str, skill_name: str | None = None,
                task_type: str = "general", session_id: int | None = None,
-               input_data: dict | None = None) -> int:
+               input_data: dict | None = None,
+               assigned_to: str | None = None,
+               parent_task_id: int | None = None) -> int:
         with get_db_session() as db:
             t = Task_(
                 title=title,
@@ -112,6 +114,8 @@ class TaskManager:
                 session_id=session_id,
                 status="created",
                 input_data=json.dumps(input_data or {}),
+                assigned_to=assigned_to or "ceo",
+                parent_task_id=parent_task_id,
             )
             db.add(t)
             db.commit()
@@ -185,6 +189,8 @@ class TaskManager:
         return {
             "id": t.id,
             "session_id": t.session_id,
+            "assigned_to": t.assigned_to,
+            "parent_task_id": t.parent_task_id,
             "title": t.title,
             "skill_name": t.skill_name,
             "task_type": t.task_type,

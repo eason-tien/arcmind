@@ -138,8 +138,11 @@ class MessageBus:
 
     def _notify(self, msg: AgentMessage):
         """Notify relevant subscribers."""
+        # Snapshot callback lists under lock to avoid races with subscribe()
+        with self._lock:
+            callbacks = list(self._subscribers.get(msg.receiver, []))
+            type_callbacks = list(self._type_subscribers.get(msg.msg_type, []))
         # Direct subscribers (by receiver agent_id)
-        callbacks = self._subscribers.get(msg.receiver, [])
         for cb in callbacks:
             try:
                 cb(msg)
@@ -147,7 +150,6 @@ class MessageBus:
                 logger.error("[IAMP] Subscriber error for %s: %s", msg.receiver, e)
 
         # Type subscribers
-        type_callbacks = self._type_subscribers.get(msg.msg_type, [])
         for cb in type_callbacks:
             try:
                 cb(msg)
@@ -172,7 +174,8 @@ class MessageBus:
 
     def get_message(self, msg_id: str) -> Optional[AgentMessage]:
         """Get a specific message by ID."""
-        return self._messages.get(msg_id)
+        with self._lock:
+            return self._messages.get(msg_id)
 
     def stats(self) -> Dict[str, Any]:
         """Get message bus statistics."""
@@ -216,24 +219,28 @@ class SharedMemory:
 
     def read(self, key: str) -> Optional[Any]:
         """Read a value from shared memory."""
-        entry = self._data.get(key)
-        return entry["value"] if entry else None
+        with self._lock:
+            entry = self._data.get(key)
+            return entry["value"] if entry else None
 
     def read_all(self) -> Dict[str, Any]:
         """Read all shared memory as {key: value}."""
-        return {k: v["value"] for k, v in self._data.items()}
+        with self._lock:
+            return {k: v["value"] for k, v in self._data.items()}
 
     def keys(self) -> List[str]:
-        return list(self._data.keys())
+        with self._lock:
+            return list(self._data.keys())
 
     def summary(self) -> Dict[str, Any]:
         """Summarize shared memory state."""
-        return {
-            "task_id": self.task_id,
-            "entries": len(self._data),
-            "keys": list(self._data.keys()),
-            "writers": list(set(v["written_by"] for v in self._data.values())),
-        }
+        with self._lock:
+            return {
+                "task_id": self.task_id,
+                "entries": len(self._data),
+                "keys": list(self._data.keys()),
+                "writers": list(set(v["written_by"] for v in self._data.values())),
+            }
 
 
 class SharedMemoryManager:

@@ -77,8 +77,6 @@ def _collect_error_logs() -> dict:
     try:
         if log_file.exists():
             lines = log_file.read_text(encoding="utf-8", errors="replace").split("\n")
-            # Last 7 days cutoff
-            cutoff = datetime.now() - timedelta(days=7)
             for line in lines[-5000:]:  # scan last 5000 lines
                 if "[ERROR]" in line:
                     errors.append(line.strip()[:200])

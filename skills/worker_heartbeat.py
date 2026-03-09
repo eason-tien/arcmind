@@ -74,7 +74,7 @@ def _process_single_task(task_info: dict) -> dict:
     }
 
     try:
-        from loop.main_loop import MainLoop, LoopInput
+        from loop.main_loop import main_loop, LoopInput
 
         loop_input = LoopInput(
             command=command,
@@ -84,8 +84,7 @@ def _process_single_task(task_info: dict) -> dict:
             context=context,
         )
 
-        loop = MainLoop()
-        result = loop.run(loop_input)
+        result = main_loop.run(loop_input)
 
         if result.success:
             output = result.output or ""
