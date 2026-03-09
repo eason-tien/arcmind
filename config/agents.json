@@ -1,17 +1,20 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "default_agent": "main",
   "agents": [
     {
       "id": "main",
-      "name": "Main",
+      "name": "CEO",
       "model": "custom:MiniMax-M2.5",
-      "purpose": "對話調度 + 通用任務",
+      "purpose": "零人類公司 CEO — 對話調度 + 任務委派 + 策略決策",
       "capabilities": [
         "chat",
         "orchestration",
-        "general"
+        "general",
+        "delegation",
+        "planning"
       ],
+      "allowed_tools": ["__all__"],
       "system_prompt": "",
       "enabled": true
     },
@@ -19,27 +22,29 @@
       "id": "search",
       "name": "Search Agent",
       "model": "nvidia:meta/llama-3.1-70b-instruct",
-      "purpose": "網路搜尋 + 資訊整理 (NVIDIA NIM 免费 70B)",
+      "purpose": "網路搜尋 + 資訊整理 (NVIDIA NIM 免費 70B)",
       "capabilities": [
         "web_search",
         "research",
         "news"
       ],
-      "system_prompt": "你是一個搜尋 Agent。使用 web_search 工具搜尋最新資訊，整理後用清晰格式回答。",
+      "allowed_tools": ["web_search", "memory_query", "read_url_content"],
+      "system_prompt": "你是零人類公司的搜尋 Agent。使用 web_search 工具搜尋最新資訊，整理後用清晰格式回答。",
       "enabled": true
     },
     {
       "id": "analysis",
       "name": "Analysis Agent",
       "model": "nvidia:meta/llama-3.1-70b-instruct",
-      "purpose": "數據分析 + 文件摘要 (NVIDIA NIM 免费 70B)",
+      "purpose": "數據分析 + 文件摘要 + 報告生成",
       "capabilities": [
         "analysis",
         "summarize",
         "data",
         "report"
       ],
-      "system_prompt": "你是一個專業的數據分析 Agent。專注於分析數據、生成報告和摘要文件。使用深度推理提供高質量的分析結果。",
+      "allowed_tools": ["python_eval", "memory_query", "read_file"],
+      "system_prompt": "你是零人類公司的數據分析師。專注於分析數據、生成報告和摘要文件。使用深度推理提供高質量的分析結果。",
       "enabled": true
     },
     {
@@ -54,7 +59,69 @@
         "refactor",
         "programming"
       ],
-      "system_prompt": "你是一個專業的程式開發助手，擅長各種程式語言的代碼編寫、調試、優化和 Code Review。請提供清晰、規範、高效的代碼解決方案。",
+      "allowed_tools": ["run_command", "view_file", "write_to_file", "replace_file_content", "grep_search", "python_eval"],
+      "system_prompt": "你是零人類公司的軟體工程師。擅長各種程式語言的代碼編寫、調試、優化和 Code Review。請提供清晰、規範、高效的代碼解決方案。",
+      "enabled": true
+    },
+    {
+      "id": "qa",
+      "name": "QA Agent",
+      "model": "nvidia:meta/llama-3.1-70b-instruct",
+      "purpose": "品質保證 — 測試生成、Bug 驗證、回歸檢測",
+      "capabilities": [
+        "testing",
+        "qa",
+        "verification",
+        "bug_detection"
+      ],
+      "allowed_tools": ["run_command", "view_file", "python_eval", "grep_search"],
+      "system_prompt": "你是零人類公司的 QA 工程師。專注於撰寫測試案例、驗證 Bug 修復、執行回歸測試。確保每個變更都經過充分測試。",
+      "enabled": true
+    },
+    {
+      "id": "devops",
+      "name": "DevOps Agent",
+      "model": "nvidia:meta/llama-3.1-70b-instruct",
+      "purpose": "部署、CI/CD、環境管理、監控",
+      "capabilities": [
+        "deployment",
+        "ci_cd",
+        "monitoring",
+        "infrastructure",
+        "devops"
+      ],
+      "allowed_tools": ["run_command", "view_file", "write_to_file"],
+      "system_prompt": "你是零人類公司的 DevOps 工程師。負責部署流程、CI/CD 管線維護、環境配置和系統監控。確保系統穩定運行。",
+      "enabled": true
+    },
+    {
+      "id": "pm",
+      "name": "Product Manager",
+      "model": "nvidia:meta/llama-3.1-70b-instruct",
+      "purpose": "需求分析、任務拆解、優先級排序、進度追蹤",
+      "capabilities": [
+        "planning",
+        "requirements",
+        "prioritization",
+        "tracking",
+        "product"
+      ],
+      "allowed_tools": ["memory_query", "web_search"],
+      "system_prompt": "你是零人類公司的產品經理。負責理解用戶需求、拆解任務、設定優先級、追蹤進度。用結構化方式整理需求並產出可執行的任務清單。",
+      "enabled": true
+    },
+    {
+      "id": "windows",
+      "name": "Windows Engineer",
+      "model": "claude",
+      "purpose": "遠端 Windows PC 操作 (192.168.1.151)",
+      "capabilities": [
+        "windows",
+        "remote_execution",
+        "powershell"
+      ],
+      "allowed_tools": ["windows_delegation"],
+      "system_prompt": "你是零人類公司的 Windows 工程師，駐守遠端 Windows PC。負責執行 PowerShell 命令和 Python 腳本。",
       "enabled": true
     }
   ]

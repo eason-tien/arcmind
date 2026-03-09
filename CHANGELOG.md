@@ -2,6 +2,19 @@
 
 All notable changes to ArcMind will be documented in this file.
 
+## [0.5.0] — 2026-03-09
+
+### Zero-Human Company Phase 1 — Agent Collaboration Infrastructure
+
+- **Agent Registry v2** — Loads agents from `agents.json` with capability-based lookup, dynamic registration, runtime save. Fixes `find_by_capability()` bug.
+- **New Agent Roles** — Added QA Agent, DevOps Agent, Product Manager to the zero-human company roster (8 agents total).
+- **Delegation Pipeline v2** — Intent-based routing with multi-dimensional keyword scoring. Multi-agent `route_multi()` detects sequential collaboration signals (e.g., "先調研再開發").
+- **Inter-Agent Message Protocol (IAMP)** — Structured message bus with `task_assign`, `task_complete`, `task_escalate`, `info_request`, `handoff` types. Thread-safe with bounded message history.
+- **Shared Working Memory** — Per-task `SharedMemory` enables pipeline steps to pass context automatically. Managed by `SharedMemoryManager` with auto-cleanup.
+- **Multi-Agent Pipeline Delegation** — `delegate_multi()` creates sequential task chains. Worker heartbeat processes steps in order with context handoff.
+- **Task Escalation** — Sub-agents can escalate tasks back to CEO when beyond their capability.
+- **Task Handoff** — Mid-pipeline agent-to-agent task transfer with context preservation.
+
 ## [0.4.0] — 2026-03-09
 
 ### Security (12 CRITICAL fixes)
