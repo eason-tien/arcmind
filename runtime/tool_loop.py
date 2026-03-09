@@ -1050,7 +1050,7 @@ def agentic_complete(
 
     # Determine which call format to use
     is_anthropic = provider_name == "anthropic"
-    is_openai_compat = provider_name in ("openai", "ollama", "groq", "mistral", "custom")
+    is_openai_compat = provider_name in ("openai", "ollama", "groq", "mistral", "custom", "nvidia")
 
     # Build initial messages for OpenAI format (system goes in messages)
     if is_openai_compat:
