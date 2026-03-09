@@ -400,6 +400,119 @@ class ToolRegistry:
             handler=_tool_list_skills,
         )
 
+        # ── Agent Template Library — 聘用/解僱 Agent ─────────────────────
+        self.register(
+            name="hire_agent",
+            description=(
+                "從模板庫聘用新 Agent。可用模板：security(安全), data_engineer(數據), "
+                "frontend(前端), designer(UI/UX), copywriter(文案), "
+                "financial(財務), translator(翻譯), sre(可靠性)。\n"
+                "聘用後 Agent 可接受委派任務。不預裝，按需聘用。"
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "template_id": {
+                        "type": "string",
+                        "description": "模板 ID: security, data_engineer, frontend, designer, copywriter, financial, translator, sre",
+                    },
+                    "custom_model": {
+                        "type": "string",
+                        "description": "自訂模型 (可選，預設用模板定義的模型)",
+                    },
+                },
+                "required": ["template_id"],
+            },
+            handler=_tool_hire_agent,
+        )
+        self.register(
+            name="fire_agent",
+            description="解僱已聘用的非核心 Agent。核心 Agent (main/search/analysis/code/qa/devops/pm/windows) 不可解僱。",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "agent_id": {
+                        "type": "string",
+                        "description": "要解僱的 Agent ID",
+                    },
+                },
+                "required": ["agent_id"],
+            },
+            handler=_tool_fire_agent,
+        )
+        self.register(
+            name="list_agent_templates",
+            description="列出所有可用的 Agent 模板及聘用狀態。CEO 用此了解可聘用的專業人才。",
+            input_schema={
+                "type": "object",
+                "properties": {},
+            },
+            handler=_tool_list_agent_templates,
+        )
+
+        # ── Agent Handoff — Agent 之間任務交接 ────────────────────────────
+        self.register(
+            name="agent_handoff",
+            description=(
+                "Agent 任務交接 — 將任務從一個 Agent 轉移給另一個 Agent。\n"
+                "交接會保留上下文，確保接收方能繼續執行。\n"
+                "透過 EventBus AGENT_HANDOFF 事件處理。"
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "from_agent": {
+                        "type": "string",
+                        "description": "交出方 Agent ID",
+                    },
+                    "to_agent": {
+                        "type": "string",
+                        "description": "接收方 Agent ID",
+                    },
+                    "command": {
+                        "type": "string",
+                        "description": "要交接的任務指令",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "交接原因",
+                    },
+                    "context": {
+                        "type": "object",
+                        "description": "交接上下文（先前結果等）",
+                    },
+                },
+                "required": ["from_agent", "to_agent", "command"],
+            },
+            handler=_tool_agent_handoff,
+        )
+
+        # ── Webhook — 主動發送 Webhook ────────────────────────────────────
+        self.register(
+            name="send_webhook",
+            description="主動發送 Webhook 到外部服務（N8N、Zapier 等）。用於通知外部系統任務完成或觸發外部工作流。",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "目標 URL",
+                    },
+                    "payload": {
+                        "type": "object",
+                        "description": "JSON payload",
+                    },
+                    "method": {
+                        "type": "string",
+                        "enum": ["POST", "PUT", "PATCH"],
+                        "description": "HTTP method (預設 POST)",
+                    },
+                },
+                "required": ["url"],
+            },
+            handler=_tool_send_webhook,
+        )
+
         # ── Harness — 長時間任務編排 ────────────────────────────────────
         try:
             from runtime.harness_tool import HARNESS_TOOL_SCHEMAS
@@ -794,6 +907,103 @@ def _tool_list_skills(**kwargs) -> str:
         return "\n".join(lines) if skills else "No skills registered."
     except Exception as e:
         return f"Error listing skills: {e}"
+
+
+# ── Agent Template Tools ──────────────────────────────────────────────────────
+
+def _tool_hire_agent(template_id: str, custom_model: str | None = None, **kwargs) -> str:
+    """Hire an agent from the template library."""
+    try:
+        from runtime.agent_templates import template_manager
+        result = template_manager.hire(template_id, custom_model)
+        if result["success"]:
+            return f"✅ 已聘用 {result['name']} (ID: {result['agent_id']}, Model: {result['model']})"
+        return f"❌ 聘用失敗: {result.get('error', 'Unknown error')}"
+    except Exception as e:
+        return f"Error hiring agent: {e}"
+
+
+def _tool_fire_agent(agent_id: str, **kwargs) -> str:
+    """Fire a hired agent (cannot fire core agents)."""
+    try:
+        from runtime.agent_templates import template_manager
+        result = template_manager.fire(agent_id)
+        if result["success"]:
+            return f"✅ 已解僱 Agent: {agent_id}"
+        return f"❌ 解僱失敗: {result.get('error', 'Unknown error')}"
+    except Exception as e:
+        return f"Error firing agent: {e}"
+
+
+def _tool_list_agent_templates(**kwargs) -> str:
+    """List all available agent templates with hire status."""
+    try:
+        from runtime.agent_templates import template_manager
+        templates = template_manager.list_templates()
+        if not templates:
+            return "No agent templates available."
+        lines = ["Available Agent Templates:", ""]
+        for t in templates:
+            status = "✅ 已聘用" if t["hired"] else "📋 可聘用"
+            lines.append(f"  {status} {t['name']} ({t['template_id']})")
+            lines.append(f"     Purpose: {t['purpose']}")
+            lines.append(f"     Capabilities: {', '.join(t['capabilities'])}")
+            lines.append(f"     Category: {t['category']}")
+            lines.append("")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error listing templates: {e}"
+
+
+def _tool_agent_handoff(
+    from_agent: str,
+    to_agent: str,
+    command: str,
+    reason: str = "Task handoff",
+    context: dict | None = None,
+    **kwargs,
+) -> str:
+    """Initiate an agent-to-agent task handoff via EventBus."""
+    try:
+        from runtime.event_bus import event_bus, Event, EventType, EventPriority
+        event_bus.emit(Event(
+            type=EventType.AGENT_HANDOFF,
+            source=f"tool:agent_handoff",
+            payload={
+                "from_agent": from_agent,
+                "to_agent": to_agent,
+                "command": command,
+                "reason": reason,
+                "context": context or {},
+            },
+            priority=EventPriority.HIGH,
+        ))
+        return f"✅ 交接已發起: {from_agent} → {to_agent} | 原因: {reason}"
+    except Exception as e:
+        return f"Error initiating handoff: {e}"
+
+
+def _tool_send_webhook(
+    url: str,
+    payload: dict | None = None,
+    method: str = "POST",
+    **kwargs,
+) -> str:
+    """Send a webhook to an external service."""
+    try:
+        import urllib.request
+        import json as _json
+        data = _json.dumps(payload or {}).encode()
+        req = urllib.request.Request(
+            url, data=data, method=method,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            status = resp.status
+            body = resp.read().decode()[:500]
+        return f"✅ Webhook sent: {method} {url} → {status}\n{body}"
+    except Exception as e:
+        return f"❌ Webhook failed: {e}"
 
 
 # ── Agentic Loop ─────────────────────────────────────────────────────────────

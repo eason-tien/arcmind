@@ -2,6 +2,47 @@
 
 All notable changes to ArcMind will be documented in this file.
 
+## [0.7.0] — 2026-03-09
+
+### Webhook 事件驅動 + Agent 模板招聘系統
+
+#### Phase 1 — Generic Webhook Endpoint
+- **`POST /v1/webhook`** 和 **`POST /v1/webhook/{source}`** — 通用 Webhook 接收端點，支援 N8N、Zapier、自定義服務回調。
+- **`X-Webhook-Secret`** header 簽名驗證（可選）。
+- Webhook 收到後發佈 `EventType.WEBHOOK` 到 EventBus，由 `handle_webhook` handler 走 OODA Loop 處理。
+- 支援 skill hint 從 payload 中提取（`skill` / `skill_name` 欄位）。
+
+#### Phase 2 — Agent Handoff 事件
+- 新增 **`EventType.AGENT_HANDOFF`** — Agent 任務交接事件類型。
+- **`handle_agent_handoff`** handler — 寫入 SharedMemory 保持交接上下文、發送 IAMP HANDOFF 訊息、通過 OODA Loop 執行接收方任務。
+- IAMP Bridge 新增 `"handoff"` 訊息類型轉發到 `AGENT_HANDOFF` 事件。
+
+#### Phase 3 — Agent 模板招聘系統
+- **`config/agent_templates.json`** — 8 個 Agent 模板：Security Engineer、Data Engineer、Frontend Engineer、UI/UX Designer、Copywriter、Financial Analyst、Translator、SRE Engineer。
+- **`runtime/agent_templates.py`** — TemplateManager：`hire()`、`fire()`、`suggest_hire()`、`list_templates()`、`find_by_capability()`。
+- **API 端點**：`GET /v1/agent/templates`、`POST /v1/agent/hire`、`POST /v1/agent/fire/{id}`、`GET /v1/agent/roster`。
+- **Delegator 增強** — 新增 security / etl / database / frontend / design / copywriting / finance / translation / sre 等 9 組 capability keywords。
+- **`suggest_hire`** — Delegator 找不到 active agent 時，自動推薦可聘用的模板（`DelegationMatch.hire_suggestion`）。
+- 核心 Agent（main/search/analysis/code/qa/devops/pm/windows）不可被解僱。
+
+#### Phase 4 — Pipeline 事件驅動可觀測性
+- **Pipeline 觀測事件** — `execute_plan()` 在每步發射 `step_start` / `step_complete` / `step_failed` 以及 `pipeline_complete` / `pipeline_failed` 事件。
+- **SharedMemory 持久化** — Pipeline 執行期間將計劃和每步結果寫入 SharedMemory，支援跨步驟可見性和故障恢復。
+- **Pipeline ID** — 每次 Pipeline 執行自動分配唯一 `pipeline_id` 用於事件關聯。
+- **Dead Letter Retry** — EventBus 新增 `retry_dead_letters()` 和 `dead_letter_summary()`，支援失敗事件重試和診斷。
+
+#### New Tools (ToolRegistry)
+- **`hire_agent`** — CEO 從模板庫聘用 Agent。
+- **`fire_agent`** — CEO 解僱非核心 Agent。
+- **`list_agent_templates`** — 列出所有可用 Agent 模板及聘用狀態。
+- **`agent_handoff`** — Agent 之間任務交接（含上下文傳遞）。
+- **`send_webhook`** — 主動發送 Webhook 到外部服務。
+
+#### Bug Fixes
+- **CircuitBreaker Lock** — 修復 `_check_circuit_breaker()` 中 `_lock` 可能為 `None` 導致的 `AttributeError`。
+- **Async Route Fix** — 修復 `_route_model()` 非同步函式被同步呼叫的問題，改用 `_route_model_sync()`。
+- **SQLite busy_timeout** — 設置 5 秒 busy_timeout 避免並發寫入時的 `database is locked` 錯誤。
+
 ## [0.6.0] — 2026-03-09
 
 ### Event-Driven 混合驅動架構
