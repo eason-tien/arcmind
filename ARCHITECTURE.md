@@ -270,3 +270,19 @@ arcmind/
 | **v0.4** | cron 系統 + lifecycle 管理 |
 | **v0.5** | browser/device 模組 |
 | **v1.0** | 完整 MVP，可與 OpenClaw 協議互操作 |
+
+---
+
+## 十一、核心演化心法 (Core System Evolution Philosophy)
+
+1. **架構是法律**
+   - 剛性分層與 Providers 模式
+   - 透過嚴謹的架構設計（Architecture as Law），保證 Agent 不會在結構與實作上跑偏。
+
+2. **Linter 是 Prompt**
+   - 自定義 Linter 不僅僅用於報錯，還必須自帶修復指令（Fix Commands）。
+   - 讓 Linter 成為 Agent 的 Prompt 來源，促使 Agent 形成自動修復與自我糾錯的完整閉環。
+
+3. **規則是倍增器**
+   - 全局生效的槓桿 (Rules as Multipliers)
+   - 制定好的規則框架與自動化守則，能夠在全局系統中發揮倍增效應，大幅降低除錯與維護成本。

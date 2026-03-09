@@ -15,7 +15,7 @@ from typing import Any, Callable, Optional
 import yaml
 
 from config.settings import settings
-from db.schema import SkillRegistry_, get_db
+from db.schema import SkillRegistry_, get_db, get_db_session
 
 logger = logging.getLogger("arcmind.skill_manager")
 
@@ -97,21 +97,21 @@ class SkillManager:
 
     def _upsert_registry(self, name: str, manifest: dict) -> None:
         try:
-            db = next(get_db())
-            existing = db.query(SkillRegistry_).filter_by(name=name).first()
-            if existing:
-                existing.manifest = json.dumps(manifest)
-                existing.enabled = True
-            else:
-                rec = SkillRegistry_(
-                    name=name,
-                    version=manifest.get("version", "1.0"),
-                    description=manifest.get("description", ""),
-                    manifest=json.dumps(manifest),
-                    source="local",
-                )
-                db.add(rec)
-            db.commit()
+            with get_db_session() as db:
+                existing = db.query(SkillRegistry_).filter_by(name=name).first()
+                if existing:
+                    existing.manifest = json.dumps(manifest)
+                    existing.enabled = True
+                else:
+                    rec = SkillRegistry_(
+                        name=name,
+                        version=manifest.get("version", "1.0"),
+                        description=manifest.get("description", ""),
+                        manifest=json.dumps(manifest),
+                        source="local",
+                    )
+                    db.add(rec)
+                db.commit()
         except Exception as e:
             logger.warning("Could not upsert skill registry for %s: %s", name, e)
 
@@ -145,13 +145,13 @@ class SkillManager:
 
     def _increment_count(self, name: str, success: bool) -> None:
         try:
-            db = next(get_db())
-            rec = db.query(SkillRegistry_).filter_by(name=name).first()
-            if rec:
-                rec.invoke_count += 1
-                if not success:
-                    rec.error_count += 1
-                db.commit()
+            with get_db_session() as db:
+                rec = db.query(SkillRegistry_).filter_by(name=name).first()
+                if rec:
+                    rec.invoke_count += 1
+                    if not success:
+                        rec.error_count += 1
+                    db.commit()
         except Exception:
             pass
 

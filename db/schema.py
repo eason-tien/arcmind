@@ -60,6 +60,8 @@ class Task_(Base):
 
     id           = Column(Integer, primary_key=True, autoincrement=True)
     session_id   = Column(Integer, nullable=True)
+    assigned_to  = Column(String(64), default="ceo")      # sub-agent role/id assigned to
+    parent_task_id = Column(Integer, nullable=True)       # for sub-tasks
     title        = Column(String(256), nullable=False)
     skill_name   = Column(String(128), nullable=True)
     task_type    = Column(String(64), default="general")
@@ -203,6 +205,17 @@ def init_db() -> None:
 
 
 def get_db() -> Generator[Session, None, None]:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+from contextlib import contextmanager
+
+@contextmanager
+def get_db_session() -> Generator[Session, None, None]:
+    """Safe context manager to prevent connection leaks."""
     db = SessionLocal()
     try:
         yield db

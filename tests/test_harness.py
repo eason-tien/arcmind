@@ -57,69 +57,69 @@ class TestHarnessSchema:
 
     def test_run_record_insert(self):
         import uuid
-        from db.schema import get_db, init_db
+        from db.schema import get_db, get_db_session, init_db
         from db.harness_schema import HarnessRun_
         init_db()
         run_id = f"test-{uuid.uuid4().hex[:8]}"
-        db = next(get_db())
-        try:
-            run = HarnessRun_(
-                id=run_id,
-                title="Test Run",
-                status="pending",
-                plan_json='[{"name":"s1","command":"do thing"}]',
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            )
-            db.add(run)
-            db.commit()
+        with get_db_session() as db:
+            try:
+                run = HarnessRun_(
+                    id=run_id,
+                    title="Test Run",
+                    status="pending",
+                    plan_json='[{"name":"s1","command":"do thing"}]',
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                db.add(run)
+                db.commit()
 
-            loaded = db.query(HarnessRun_).filter_by(id=run_id).first()
-            assert loaded is not None
-            assert loaded.title == "Test Run"
-            assert loaded.status == "pending"
+                loaded = db.query(HarnessRun_).filter_by(id=run_id).first()
+                assert loaded is not None
+                assert loaded.title == "Test Run"
+                assert loaded.status == "pending"
 
-            # Cleanup
-            db.delete(loaded)
-            db.commit()
-        finally:
-            db.close()
+                # Cleanup
+                db.delete(loaded)
+                db.commit()
+            finally:
+                db.close()
 
     def test_step_record_insert(self):
         import uuid
-        from db.schema import get_db, init_db
+        from db.schema import get_db, get_db_session, init_db
         from db.harness_schema import HarnessRun_, HarnessStep_
         init_db()
         run_id = f"test-{uuid.uuid4().hex[:8]}"
-        db = next(get_db())
-        try:
-            run = HarnessRun_(
-                id=run_id, title="Test", status="pending",
-                created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
-            )
-            db.add(run)
+        with get_db_session() as db:
+            try:
+                run = HarnessRun_(
+                    id=run_id, title="Test", status="pending",
+                    created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
+                )
+                db.add(run)
 
-            step = HarnessStep_(
-                run_id=run_id,
-                step_idx=0,
-                name="step_0",
-                command="do something",
-                status="pending",
-            )
-            db.add(step)
-            db.commit()
+                step = HarnessStep_(
+                    run_id=run_id,
+                    step_idx=0,
+                    name="step_0",
+                    command="do something",
+                    status="pending",
+                )
+                db.add(step)
+                db.commit()
 
-            loaded = db.query(HarnessStep_).filter_by(run_id=run_id).first()
-            assert loaded is not None
-            assert loaded.name == "step_0"
-            assert loaded.command == "do something"
+                loaded = db.query(HarnessStep_).filter_by(run_id=run_id).first()
+                assert loaded is not None
+                assert loaded.name == "step_0"
+                assert loaded.command == "do something"
 
-            # Cleanup (steps first due to FK)
-            db.query(HarnessStep_).filter_by(run_id=run_id).delete()
-            db.query(HarnessRun_).filter_by(id=run_id).delete()
-            db.commit()
-        finally:
-            db.close()
+                # Cleanup (steps first due to FK)
+                db.query(HarnessStep_).filter_by(run_id=run_id).delete()
+                db.query(HarnessRun_).filter_by(id=run_id).delete()
+                db.commit()
+            finally:
+                db.close()
 
 
 # ── Engine Lifecycle Tests ──────────────────────────────────────────────────

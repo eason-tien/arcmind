@@ -235,7 +235,35 @@ def create_app() -> FastAPI:
                 p["provider"]: recommended.get(p["provider"], [])
                 for p in providers
             },
+            "default_model": model_router._rules.default
         }
+
+    from pydantic import BaseModel
+    import yaml
+    from config.settings import settings
+
+    class DefaultModelReq(BaseModel):
+        model: str
+
+    @app.post("/v1/models/default")
+    def set_default_model(req: DefaultModelReq):
+        from runtime.model_router import model_router
+        import yaml
+        
+        path = settings.routing_rules_path
+        try:
+            with open(path, "r") as f:
+                data = yaml.safe_load(f) or {}
+        except Exception:
+            data = {}
+            
+        data["default"] = req.model
+        with open(path, "w") as f:
+            yaml.dump(data, f, sort_keys=False, allow_unicode=True)
+            
+        # reload the rules in memory
+        model_router._rules.default = req.model
+        return {"status": "ok", "default_model": req.model}
 
     # ── Routers ───────────────────────────────────────────────────────────────
     from api.routes.agent_routes import router as agent_router
@@ -261,6 +289,28 @@ def create_app() -> FastAPI:
         logger.info("[App] Voice WebSocket endpoint registered: /ws/voice")
     except ImportError as e:
         logger.warning("[App] Voice WebSocket not available: %s", e)
+
+    # ── Web UI (React Frontend) ───────────────────────────────────────────
+    import os
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse
+    
+    ui_dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui", "dist")
+    if os.path.exists(ui_dist_path):
+        app.mount("/ui/assets", StaticFiles(directory=os.path.join(ui_dist_path, "assets")), name="ui_assets")
+        
+        @app.get("/ui", include_in_schema=False)
+        @app.get("/ui/{catchall:path}", include_in_schema=False)
+        def serve_ui(catchall: str = ""):
+            # SPA routing fallback
+            file_path = os.path.join(ui_dist_path, catchall)
+            if catchall and os.path.exists(file_path) and os.path.isfile(file_path):
+                return FileResponse(file_path)
+            return FileResponse(os.path.join(ui_dist_path, "index.html"))
+            
+        logger.info("[App] Web UI registered at /ui")
+    else:
+        logger.warning("[App] Web UI dist folder not found at %s. Did you run 'npm run build'?", ui_dist_path)
 
     # ── Global error handler ──────────────────────────────────────────────────
     @app.exception_handler(Exception)

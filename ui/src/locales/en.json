@@ -1,0 +1,61 @@
+{
+    "sidebar": {
+        "app_name": "ArcMind OS",
+        "new_chat": "New Conversation",
+        "recent": "Recent",
+        "settings": "Settings",
+        "views": "VIEWS",
+        "view_chat": "Chat Logs",
+        "view_live": "Live Feed",
+        "view_memory": "Memory Matrix"
+    },
+    "dashboard": {
+        "live_title": "Live Agent Activity Feed",
+        "live_desc": "Real-time monitoring of autonomous sub-agent execution",
+        "memory_title": "Memory Matrix",
+        "memory_desc": "Semantic & Episodic Long-Term Memory (LTM) Viewer",
+        "search_concepts": "Search concepts...",
+        "active_context": "Active Context Window",
+        "no_activity": "No recent autonomous activity."
+    },
+    "chat": {
+        "model_auto": "Model: Default (Auto)",
+        "welcome_title": "How can I help you today?",
+        "welcome_subtitle": "I'm your autonomous intelligence agent. Ask me anything, or give me a task to execute on your environment.",
+        "input_placeholder": "Message ArcMind...",
+        "disclaimer": "ArcMind can make mistakes. Consider verifying important information.",
+        "copied": "Copied",
+        "copy": "Copy",
+        "mock_response": "I'm ArcMind. I received your message: \n\n> {{msg}}\n\n*Note: This is a placeholder UI response. Backend integration pending!*"
+    },
+    "settings": {
+        "title": "Settings & Configuration",
+        "tab_models": "AI Models",
+        "tab_system": "System",
+        "tab_monitor": "Monitor",
+        "global_model_title": "Global Default Model",
+        "global_model_desc": "Select the AI model used for new conversations.",
+        "api_keys_title": "Provider API Keys",
+        "api_keys_desc": "Configure API keys for any custom AI providers.",
+        "registered": "Registered",
+        "save": "Save Changes",
+        "cancel": "Cancel",
+        "language": "Interface Language",
+        "language_desc": "Select the primary display language.",
+        "arcmind_engine": "ArcMind Engine",
+        "version": "Version"
+    },
+    "monitor": {
+        "title": "System Environment Monitor",
+        "desc": "Real-time health and status of the ArcMind engine.",
+        "status_online": "Online",
+        "status_offline": "Offline",
+        "metric_agents": "Active Agents",
+        "metric_sessions": "Active Sessions",
+        "metric_tasks": "Open Tasks",
+        "metric_skills": "Loaded Skills",
+        "metric_cron": "Cron Jobs",
+        "metric_providers": "AI Providers",
+        "mgis_database": "MGIS Database"
+    }
+}

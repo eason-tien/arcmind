@@ -106,22 +106,22 @@ def _collect_error_logs() -> dict:
 def _collect_task_stats() -> dict:
     """Query task success/failure rates from DB."""
     try:
-        from db.schema import Task_, get_db
-        db = next(get_db())
-        cutoff = datetime.utcnow() - timedelta(days=7)
-        total = db.query(Task_).filter(Task_.created_at >= cutoff).count()
-        closed = db.query(Task_).filter(
-            Task_.created_at >= cutoff, Task_.status == "closed"
-        ).count()
-        failed = db.query(Task_).filter(
-            Task_.created_at >= cutoff, Task_.status == "failed"
-        ).count()
-        return {
-            "total_tasks_7d": total,
-            "closed": closed,
-            "failed": failed,
-            "success_rate": round(closed / max(total, 1) * 100, 1),
-        }
+        from db.schema import Task_, get_db, get_db_session
+        with get_db_session() as db:
+            cutoff = datetime.utcnow() - timedelta(days=7)
+            total = db.query(Task_).filter(Task_.created_at >= cutoff).count()
+            closed = db.query(Task_).filter(
+                Task_.created_at >= cutoff, Task_.status == "closed"
+            ).count()
+            failed = db.query(Task_).filter(
+                Task_.created_at >= cutoff, Task_.status == "failed"
+            ).count()
+            return {
+                "total_tasks_7d": total,
+                "closed": closed,
+                "failed": failed,
+                "success_rate": round(closed / max(total, 1) * 100, 1),
+            }
     except Exception as e:
         return {"error": str(e)}
 
@@ -155,14 +155,14 @@ def _collect_agent_usage() -> dict:
 def _collect_skill_stats() -> list:
     """Collect skill invoke/error counts."""
     try:
-        from db.schema import SkillRegistry_, get_db
-        db = next(get_db())
-        skills = db.query(SkillRegistry_).all()
-        return [
-            {"name": s.name, "invokes": s.invoke_count,
-             "errors": s.error_count, "enabled": s.enabled}
-            for s in skills
-        ]
+        from db.schema import SkillRegistry_, get_db, get_db_session
+        with get_db_session() as db:
+            skills = db.query(SkillRegistry_).all()
+            return [
+                {"name": s.name, "invokes": s.invoke_count,
+                 "errors": s.error_count, "enabled": s.enabled}
+                for s in skills
+            ]
     except Exception as e:
         return [{"error": str(e)}]
 
@@ -409,20 +409,20 @@ def save_iteration_record(
 ) -> int:
     """Save the iteration meeting results to DB."""
     try:
-        from db.schema import IterationRecord_, get_db
-        db = next(get_db())
-        rec = IterationRecord_(
-            week_id=week_id,
-            phase=phase,
-            report=json.dumps(report, ensure_ascii=False, default=str),
-            plan=json.dumps(plan, ensure_ascii=False, default=str),
-        )
-        db.add(rec)
-        db.commit()
-        db.refresh(rec)
-        logger.info("[IterationRecord] Saved: week=%s id=%d phase=%s",
-                    week_id, rec.id, phase)
-        return rec.id
+        from db.schema import IterationRecord_, get_db, get_db_session
+        with get_db_session() as db:
+            rec = IterationRecord_(
+                week_id=week_id,
+                phase=phase,
+                report=json.dumps(report, ensure_ascii=False, default=str),
+                plan=json.dumps(plan, ensure_ascii=False, default=str),
+            )
+            db.add(rec)
+            db.commit()
+            db.refresh(rec)
+            logger.info("[IterationRecord] Saved: week=%s id=%d phase=%s",
+                        week_id, rec.id, phase)
+            return rec.id
     except Exception as e:
         logger.error("[IterationRecord] Save failed: %s", e)
         return -1
@@ -581,62 +581,62 @@ def execute_daily_check() -> dict:
     - 所有代碼變更先在影子區測試，通過後才推到主系統
     """
     try:
-        from db.schema import IterationRecord_, get_db
-        db = next(get_db())
+        from db.schema import IterationRecord_, get_db, get_db_session
+        with get_db_session() as db:
 
-        # Find the latest planned/executing iteration
-        rec = db.query(IterationRecord_).filter(
-            IterationRecord_.phase.in_(["planned", "executing"])
-        ).order_by(IterationRecord_.created_at.desc()).first()
+            # Find the latest planned/executing iteration
+            rec = db.query(IterationRecord_).filter(
+                IterationRecord_.phase.in_(["planned", "executing"])
+            ).order_by(IterationRecord_.created_at.desc()).first()
 
-        if not rec:
-            logger.info("[DailyCheck] No pending iterations.")
-            return {"status": "no_pending"}
+            if not rec:
+                logger.info("[DailyCheck] No pending iterations.")
+                return {"status": "no_pending"}
 
-        plan = json.loads(rec.plan or "[]")
-        executed = []
-        failed = []
+            plan = json.loads(rec.plan or "[]")
+            executed = []
+            failed = []
 
-        for task in plan:
-            if task.get("status") != "planned":
-                continue
-            if task.get("requires_user_approval", True):
-                continue
+            for task in plan:
+                if task.get("status") != "planned":
+                    continue
+                if task.get("requires_user_approval", True):
+                    continue
 
-            goal = task.get("goal", "unknown")
-            logger.info("[DailyCheck] Executing: %s", goal)
+                goal = task.get("goal", "unknown")
+                logger.info("[DailyCheck] Executing: %s", goal)
 
-            try:
-                result = _execute_single_task(task)
-                if result.get("success"):
-                    task["status"] = "completed"
-                    task["executed_at"] = datetime.now().isoformat()
-                    task["result"] = result.get("summary", "")
-                    executed.append(goal)
-                else:
+                try:
+                    result = _execute_single_task(task)
+                    if result.get("success"):
+                        task["status"] = "completed"
+                        task["executed_at"] = datetime.now().isoformat()
+                        task["result"] = result.get("summary", "")
+                        executed.append(goal)
+                    else:
+                        task["status"] = "failed"
+                        task["error"] = result.get("error", "unknown")
+                        failed.append(goal)
+                except Exception as e:
                     task["status"] = "failed"
-                    task["error"] = result.get("error", "unknown")
+                    task["error"] = str(e)
                     failed.append(goal)
-            except Exception as e:
-                task["status"] = "failed"
-                task["error"] = str(e)
-                failed.append(goal)
-                logger.error("[DailyCheck] Task failed: %s — %s", goal, e)
+                    logger.error("[DailyCheck] Task failed: %s — %s", goal, e)
 
-        if executed or failed:
-            rec.plan = json.dumps(plan, ensure_ascii=False, default=str)
-            rec.phase = "executing"
+            if executed or failed:
+                rec.plan = json.dumps(plan, ensure_ascii=False, default=str)
+                rec.phase = "executing"
 
-            all_done = all(t.get("status") != "planned" for t in plan)
-            if all_done:
-                rec.phase = "completed"
-                rec.completed_at = datetime.utcnow()
+                all_done = all(t.get("status") != "planned" for t in plan)
+                if all_done:
+                    rec.phase = "completed"
+                    rec.completed_at = datetime.utcnow()
 
-            db.commit()
-            logger.info("[DailyCheck] Done: %d executed, %d failed",
-                        len(executed), len(failed))
+                db.commit()
+                logger.info("[DailyCheck] Done: %d executed, %d failed",
+                            len(executed), len(failed))
 
-        return {"status": "checked", "executed": executed, "failed": failed}
+            return {"status": "checked", "executed": executed, "failed": failed}
     except Exception as e:
         logger.error("[DailyCheck] Error: %s", e)
         return {"status": "error", "error": str(e)}
@@ -752,55 +752,55 @@ def measure_iteration_effect() -> dict:
     比較本週與上週的系統指標，追蹤迭代效果。
     """
     try:
-        from db.schema import IterationRecord_, get_db
-        db = next(get_db())
+        from db.schema import IterationRecord_, get_db, get_db_session
+        with get_db_session() as db:
 
-        records = db.query(IterationRecord_).order_by(
-            IterationRecord_.created_at.desc()
-        ).limit(2).all()
+            records = db.query(IterationRecord_).order_by(
+                IterationRecord_.created_at.desc()
+            ).limit(2).all()
 
-        if len(records) < 2:
-            return {"status": "insufficient_data", "message": "需要至少兩週數據才能比較"}
+            if len(records) < 2:
+                return {"status": "insufficient_data", "message": "需要至少兩週數據才能比較"}
 
-        current = records[0]
-        previous = records[1]
+            current = records[0]
+            previous = records[1]
 
-        current_report = json.loads(current.report or "{}")
-        previous_report = json.loads(previous.report or "{}")
+            current_report = json.loads(current.report or "{}")
+            previous_report = json.loads(previous.report or "{}")
 
-        # Extract metrics for comparison
-        current_intel = current_report.get("intel", {})
-        previous_intel = previous_report.get("intel", {})
+            # Extract metrics for comparison
+            current_intel = current_report.get("intel", {})
+            previous_intel = previous_report.get("intel", {})
 
-        current_errors = current_intel.get("error_summary", {}).get("total_errors", 0)
-        previous_errors = previous_intel.get("error_summary", {}).get("total_errors", 0)
+            current_errors = current_intel.get("error_summary", {}).get("total_errors", 0)
+            previous_errors = previous_intel.get("error_summary", {}).get("total_errors", 0)
 
-        current_success = current_intel.get("task_stats", {}).get("success_rate", 0)
-        previous_success = previous_intel.get("task_stats", {}).get("success_rate", 0)
+            current_success = current_intel.get("task_stats", {}).get("success_rate", 0)
+            previous_success = previous_intel.get("task_stats", {}).get("success_rate", 0)
 
-        # Plan completion stats
-        current_plan = json.loads(current.plan or "[]")
-        completed = sum(1 for t in current_plan if t.get("status") == "completed")
-        total = len(current_plan)
+            # Plan completion stats
+            current_plan = json.loads(current.plan or "[]")
+            completed = sum(1 for t in current_plan if t.get("status") == "completed")
+            total = len(current_plan)
 
-        delta = {
-            "error_delta": current_errors - previous_errors,
-            "error_direction": "📉 改善" if current_errors < previous_errors else "📈 增加" if current_errors > previous_errors else "➡️ 持平",
-            "success_rate_delta": round(current_success - previous_success, 1),
-            "success_direction": "📈 改善" if current_success > previous_success else "📉 下降" if current_success < previous_success else "➡️ 持平",
-            "plan_completion": f"{completed}/{total}",
-            "current_week": current.week_id,
-            "previous_week": previous.week_id,
-        }
+            delta = {
+                "error_delta": current_errors - previous_errors,
+                "error_direction": "📉 改善" if current_errors < previous_errors else "📈 增加" if current_errors > previous_errors else "➡️ 持平",
+                "success_rate_delta": round(current_success - previous_success, 1),
+                "success_direction": "📈 改善" if current_success > previous_success else "📉 下降" if current_success < previous_success else "➡️ 持平",
+                "plan_completion": f"{completed}/{total}",
+                "current_week": current.week_id,
+                "previous_week": previous.week_id,
+            }
 
-        # Save effect data back to current record
-        current.results = json.dumps(delta, ensure_ascii=False)
-        db.commit()
+            # Save effect data back to current record
+            current.results = json.dumps(delta, ensure_ascii=False)
+            db.commit()
 
-        logger.info("[EffectTracking] Week %s vs %s: errors %s, success %s",
-                    current.week_id, previous.week_id,
-                    delta["error_direction"], delta["success_direction"])
-        return delta
+            logger.info("[EffectTracking] Week %s vs %s: errors %s, success %s",
+                        current.week_id, previous.week_id,
+                        delta["error_direction"], delta["success_direction"])
+            return delta
     except Exception as e:
         logger.error("[EffectTracking] Error: %s", e)
         return {"status": "error", "error": str(e)}
@@ -821,42 +821,42 @@ def collect_user_feedback() -> dict:
 
     # Scan session logs for user messages
     try:
-        from db.schema import Session_, get_db
-        db = next(get_db())
+        from db.schema import Session_, get_db, get_db_session
+        with get_db_session() as db:
 
-        cutoff = datetime.utcnow() - timedelta(days=7)
-        all_sessions = db.query(Session_).filter(
-            Session_.created_at >= cutoff,
-        ).all()
+            cutoff = datetime.utcnow() - timedelta(days=7)
+            all_sessions = db.query(Session_).filter(
+                Session_.created_at >= cutoff,
+            ).all()
 
-        # Filter sessions by channel from context JSON
-        sessions = []
-        for s in all_sessions:
-            try:
-                ctx = json.loads(s.context or "{}")
-                if ctx.get("channel") == "telegram":
-                    sessions.append(s)
-            except:
-                pass
+            # Filter sessions by channel from context JSON
+            sessions = []
+            for s in all_sessions:
+                try:
+                    ctx = json.loads(s.context or "{}")
+                    if ctx.get("channel") == "telegram":
+                        sessions.append(s)
+                except:
+                    pass
 
-        for session in sessions:
-            ctx = json.loads(session.context or "{}")
-            history = ctx.get("history", [])
-            for msg in history:
-                if msg.get("role") != "user":
-                    continue
-                text = msg.get("content", "")
-                if not isinstance(text, str) or len(text) < 5:
-                    continue
+            for session in sessions:
+                ctx = json.loads(session.context or "{}")
+                history = ctx.get("history", [])
+                for msg in history:
+                    if msg.get("role") != "user":
+                        continue
+                    text = msg.get("content", "")
+                    if not isinstance(text, str) or len(text) < 5:
+                        continue
 
-                # Simple sentiment signals (not keyword-based, but pattern-based)
-                lower = text.lower()
-                if any(p in text for p in ["不會", "不行", "又", "怎麼還", "死卡", "被限制", "不應該"]):
-                    feedback["complaints"].append(text[:100])
-                elif any(p in text for p in ["要做", "希望", "可以加", "需要", "幫我", "設定"]):
-                    feedback["requests"].append(text[:100])
-                elif any(p in text for p in ["好", "讚", "不錯", "LGTM", "OK"]):
-                    feedback["positive"].append(text[:100])
+                    # Simple sentiment signals (not keyword-based, but pattern-based)
+                    lower = text.lower()
+                    if any(p in text for p in ["不會", "不行", "又", "怎麼還", "死卡", "被限制", "不應該"]):
+                        feedback["complaints"].append(text[:100])
+                    elif any(p in text for p in ["要做", "希望", "可以加", "需要", "幫我", "設定"]):
+                        feedback["requests"].append(text[:100])
+                    elif any(p in text for p in ["好", "讚", "不錯", "LGTM", "OK"]):
+                        feedback["positive"].append(text[:100])
     except Exception as e:
         logger.warning("[UserFeedback] Could not parse sessions: %s", e)
 

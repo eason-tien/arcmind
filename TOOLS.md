@@ -92,6 +92,7 @@
 | **document_skill** | PPT/Excel 文件生成 | `analyze_template`, `create_ppt`, `create_excel` |
 | **env_discovery** | 三維度認知掃描 | `host_info`, `scan_ports`, `db_discovery`, `full_scan` |
 | **gitnexus_skill** | 代碼智慧引擎 | `query`, `context`, `impact`, `rename`, `reindex` |
+| **agent_delegation** | 背景委派任務給專職子員工 (Paperclip 多代理架構) | `assignee`, `title`, `task_data` |
 
 ### 6. Skill 市場 (`runtime/skill_installer.py`)
 - `/install owner/repo` — 從 GitHub 安裝

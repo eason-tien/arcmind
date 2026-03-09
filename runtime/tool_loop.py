@@ -783,6 +783,29 @@ def agentic_complete(
             logger.info("[AgenticLoop] 🔧 executing: %s(%s)",
                          tool_name, json.dumps(tool_input, ensure_ascii=False)[:100])
 
+            # Broadcast to Live Feed Dashboard
+            try:
+                import urllib.request
+                import threading
+                def _post_activity():
+                    try:
+                        req = urllib.request.Request(
+                            "http://127.0.0.1:8100/v1/internal/broadcast_activity",
+                            data=json.dumps({
+                                "agent": "ceo",  # In the future, this can dynamic per-agent
+                                "action": f"Executing Tool: {tool_name}",
+                                "details": json.dumps(tool_input, ensure_ascii=False)[:300],
+                                "status": "pending"
+                            }).encode(),
+                            headers={'Content-Type': 'application/json'}
+                        )
+                        urllib.request.urlopen(req, timeout=1)
+                    except Exception:
+                        pass
+                threading.Thread(target=_post_activity, daemon=True).start()
+            except Exception:
+                pass
+
             handler = registry.get_handler(tool_name)
             if handler:
                 try:

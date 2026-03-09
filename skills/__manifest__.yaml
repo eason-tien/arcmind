@@ -328,3 +328,245 @@ skills:
       - name: conversations
         type: list
         description: 对话列表
+
+  - name: agent_delegation
+    module: agent_delegation.py
+    handler: delegate_task
+    version: "1.0"
+    description: "Multi-Agent Orchestration: Delegate a task to a specialized sub-agent (e.g., researcher, engineer) for asynchronous execution."
+    permissions: [filesystem]
+    tags: [orchestration, delegation, multi-agent, paperclip]
+    governor_required: false
+    inputs:
+      - name: assignee
+        type: string
+        required: true
+        description: "The role of the sub-agent, e.g., 'researcher' or 'engineer'"
+      - name: title
+        type: string
+        required: true
+        description: "Short title or description of the task"
+      - name: task_data
+        type: dict
+        required: false
+        description: "Detailed instructions and context for the sub-agent"
+      - name: parent_task_id
+        type: int
+        required: false
+        description: "The current task ID delegating this work. Pass this to link the tasks."
+    outputs:
+      - name: task_id
+        type: int
+        description: "The ID of the newly spawned sub-task"
+      - name: message
+        type: string
+
+  - name: worker_heartbeat
+    module: worker_heartbeat.py
+    handler: run
+    version: "1.0"
+    description: "Multi-Agent Orchestration: Background worker that processes delegated sub-tasks."
+    permissions: [filesystem]
+    tags: [orchestration, heartbeat, cron, paperclip]
+    governor_required: false
+    inputs: []
+    outputs:
+      - name: processed
+        type: int
+        description: "Number of tasks processed"
+      - name: message
+        type: string
+
+  - name: windows_delegation
+    module: windows_delegation.py
+    handler: run
+    version: "1.0"
+    description: "Multi-Agent Orchestration: Delegate a shell/python task to the remote Windows PC at 192.168.1.151."
+    permissions: [network]
+    tags: [orchestration, delegation, windows, paperclip]
+    governor_required: false
+    inputs:
+      - name: title
+        type: string
+        required: true
+        description: "Short title or description of the task"
+      - name: command
+        type: string
+        required: true
+        description: "The powershell command or python script to execute on the remote machine"
+      - name: task_type
+        type: string
+        required: false
+        default: "shell"
+        description: "'shell' (powershell) or 'python'"
+    outputs:
+      - name: success
+        type: bool
+      - name: stdout
+        type: string
+      - name: stderr
+        type: string
+
+  - name: ai_trend_monitor
+    module: ai_trend_monitor.py
+    handler: handler
+    version: "1.0.0"
+    description: "AI趋势监控 - 每天自动搜集AI/科技资讯，分析趋势，生成需求报告"
+    permissions: [filesystem, network]
+    tags: [ai, trend, monitor, news, cron]
+    governor_required: false
+    inputs:
+      - name: action
+        type: string
+        required: false
+        default: "daily"
+        description: "daily (每日扫描) | report (生成报告) | search (自定义搜索)"
+      - name: days
+        type: int
+        required: false
+        default: 7
+        description: "报告天数 (action=report 时)"
+      - name: query
+        type: string
+        required: false
+        description: "搜索关键词 (action=search 时)"
+    outputs:
+      - name: status
+        type: string
+      - name: json_output
+        type: string
+      - name: report_output
+        type: string
+
+  - name: code_assistant
+    module: code_assistant.py
+    handler: handler
+    version: "1.0.0"
+    description: "代码开发助手 - 代码生成、修复、优化、解释"
+    permissions: [filesystem, shell]
+    tags: [code, development, assistant, generator]
+    governor_required: false
+    inputs:
+      - name: action
+        type: string
+        required: false
+        default: "generate"
+        description: "generate (生成) | fix (修复) | optimize (优化) | explain (解释) | execute (执行) | test (测试)"
+      - name: language
+        type: string
+        required: false
+        default: "python"
+        description: "编程语言: python/bash/javascript"
+      - name: prompt
+        type: string
+        required: false
+        description: "代码描述 (action=generate 时)"
+      - name: code
+        type: string
+        required: false
+        description: "代码内容 (action=fix/optimize/explain/execute/test 时)"
+      - name: error
+        type: string
+        required: false
+        description: "错误信息 (action=fix 时)"
+      - name: focus
+        type: string
+        required: false
+        default: "performance"
+        description: "优化方向 (action=optimize 时): performance/readability/security"
+      - name: filename
+        type: string
+        required: false
+        description: "保存文件名"
+      - name: test_type
+        type: string
+        required: false
+        default: "syntax"
+        description: "测试类型 (action=test 时): syntax/unit/integration"
+    outputs:
+      - name: status
+        type: string
+      - name: code
+        type: string
+      - name: output_file
+        type: string
+      - name: executed
+        type: bool
+
+  - name: agent_builder
+    module: agent_builder.py
+    handler: handler
+    version: "1.0.0"
+    description: "多步骤智能体工作流构建器 - 帮助用户快速创建和管理 AI Agent 任务链"
+    permissions: [filesystem]
+    tags: [agent, workflow, orchestration, builder, automation]
+    governor_required: false
+    inputs:
+      - name: action
+        type: string
+        required: false
+        default: "list_agents"
+        description: "create_agent | create_workflow | add_step | execute_workflow | list_agents | list_workflows | get_status | list_executions"
+      - name: name
+        type: string
+        required: false
+        description: "Agent/工作流名称"
+      - name: description
+        type: string
+        required: false
+        description: "描述"
+      - name: capabilities
+        type: array
+        required: false
+        description: "Agent 能力列表"
+      - name: model
+        type: string
+        required: false
+        default: "ollama:qwen3:8b"
+        description: "使用的模型"
+      - name: agent_id
+        type: string
+        required: false
+        description: "Agent ID"
+      - name: workflow_id
+        type: string
+        required: false
+        description: "工作流 ID"
+      - name: step_name
+        type: string
+        required: false
+        description: "步骤名称"
+      - name: step_type
+        type: string
+        required: false
+        default: "task"
+        description: "步骤类型: task/condition/parallel/loop"
+      - name: step_config
+        type: object
+        required: false
+        description: "步骤配置"
+      - name: inputs
+        type: object
+        required: false
+        description: "执行输入参数"
+      - name: execution_id
+        type: string
+        required: false
+        description: "执行 ID"
+    outputs:
+      - name: status
+        type: string
+      - name: agent
+        type: object
+      - name: workflow
+        type: object
+      - name: step
+        type: object
+      - name: execution
+        type: object
+      - name: agents
+        type: array
+      - name: workflows
+        type: array
+      - name: executions
+        type: array

@@ -314,22 +314,22 @@ def _get_system_status() -> str:
 def _get_iteration_progress() -> str:
     """Get the latest iteration plan status."""
     try:
-        from db.schema import IterationRecord_, get_db
-        db = next(get_db())
-        rec = db.query(IterationRecord_).order_by(
-            IterationRecord_.created_at.desc()
-        ).first()
-        if rec:
-            plan = json.loads(rec.plan or "[]")
-            planned = sum(1 for t in plan if t.get("status") == "planned")
-            completed = sum(1 for t in plan if t.get("status") == "completed")
-            total = len(plan)
-            return (
-                f"📋 週度迭代 ({rec.week_id}): "
-                f"{completed}/{total} 完成, {planned} 待執行, "
-                f"階段: {rec.phase}"
-            )
-        return "📋 尚無迭代記錄"
+        from db.schema import IterationRecord_, get_db, get_db_session
+        with get_db_session() as db:
+            rec = db.query(IterationRecord_).order_by(
+                IterationRecord_.created_at.desc()
+            ).first()
+            if rec:
+                plan = json.loads(rec.plan or "[]")
+                planned = sum(1 for t in plan if t.get("status") == "planned")
+                completed = sum(1 for t in plan if t.get("status") == "completed")
+                total = len(plan)
+                return (
+                    f"📋 週度迭代 ({rec.week_id}): "
+                    f"{completed}/{total} 完成, {planned} 待執行, "
+                    f"階段: {rec.phase}"
+                )
+            return "📋 尚無迭代記錄"
     except Exception as e:
         return f"📋 迭代進度查詢失敗 ({e})"
 

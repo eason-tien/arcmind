@@ -16,7 +16,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from config.settings import settings
-from db.schema import CronJob_, get_db
+from db.schema import CronJob_, get_db, get_db_session
 
 logger = logging.getLogger("arcmind.cron")
 
@@ -88,45 +88,45 @@ class CronSystem:
         input_data = input_data or {}
 
         # 儲存到 DB
-        db = next(get_db())
-        existing = db.query(CronJob_).filter_by(name=name).first()
-        if existing:
-            existing.skill_name = skill_name
-            existing.cron_expr = cron_expr
-            existing.interval_s = interval_s
-            existing.input_data = json.dumps(input_data)
-            existing.governor_required = governor_required
-            existing.enabled = True
-            db.commit()
-            job_id = existing.id
-        else:
-            rec = CronJob_(
-                name=name,
-                cron_expr=cron_expr,
-                interval_s=interval_s,
-                skill_name=skill_name,
-                input_data=json.dumps(input_data),
-                governor_required=governor_required,
-                enabled=True,
+        with get_db_session() as db:
+            existing = db.query(CronJob_).filter_by(name=name).first()
+            if existing:
+                existing.skill_name = skill_name
+                existing.cron_expr = cron_expr
+                existing.interval_s = interval_s
+                existing.input_data = json.dumps(input_data)
+                existing.governor_required = governor_required
+                existing.enabled = True
+                db.commit()
+                job_id = existing.id
+            else:
+                rec = CronJob_(
+                    name=name,
+                    cron_expr=cron_expr,
+                    interval_s=interval_s,
+                    skill_name=skill_name,
+                    input_data=json.dumps(input_data),
+                    governor_required=governor_required,
+                    enabled=True,
+                )
+                db.add(rec)
+                db.commit()
+                db.refresh(rec)
+                job_id = rec.id
+
+            # 加入排程器
+            self._scheduler.add_job(
+                func=self._run_job,
+                trigger=trigger,
+                id=name,
+                replace_existing=True,
+                kwargs={"name": name, "skill_name": skill_name,
+                        "input_data": input_data, "governor_required": governor_required},
             )
-            db.add(rec)
-            db.commit()
-            db.refresh(rec)
-            job_id = rec.id
 
-        # 加入排程器
-        self._scheduler.add_job(
-            func=self._run_job,
-            trigger=trigger,
-            id=name,
-            replace_existing=True,
-            kwargs={"name": name, "skill_name": skill_name,
-                    "input_data": input_data, "governor_required": governor_required},
-        )
-
-        logger.info("Cron added: name=%s skill=%s cron=%s interval=%s",
-                    name, skill_name, cron_expr, interval_s)
-        return {"id": job_id, "name": name, "status": "scheduled"}
+            logger.info("Cron added: name=%s skill=%s cron=%s interval=%s",
+                        name, skill_name, cron_expr, interval_s)
+            return {"id": job_id, "name": name, "status": "scheduled"}
 
     # ── 刪除 / 暫停 ───────────────────────────────────────────────────────────
 
@@ -135,12 +135,12 @@ class CronSystem:
             self._scheduler.remove_job(name)
         except Exception:
             pass
-        db = next(get_db())
-        rec = db.query(CronJob_).filter_by(name=name).first()
-        if rec:
-            rec.enabled = False
-            db.commit()
-        logger.info("Cron removed: %s", name)
+        with get_db_session() as db:
+            rec = db.query(CronJob_).filter_by(name=name).first()
+            if rec:
+                rec.enabled = False
+                db.commit()
+            logger.info("Cron removed: %s", name)
 
     def pause_job(self, name: str) -> None:
         self._scheduler.pause_job(name)
@@ -178,75 +178,75 @@ class CronSystem:
 
     def _update_run(self, name: str, success: bool) -> None:
         try:
-            db = next(get_db())
-            rec = db.query(CronJob_).filter_by(name=name).first()
-            if rec:
-                rec.last_run = datetime.utcnow()
-                rec.run_count += 1
-                db.commit()
+            with get_db_session() as db:
+                rec = db.query(CronJob_).filter_by(name=name).first()
+                if rec:
+                    rec.last_run = datetime.utcnow()
+                    rec.run_count += 1
+                    db.commit()
         except Exception:
             pass
 
     # ── 恢復 ──────────────────────────────────────────────────────────────────
 
     def _restore_from_db(self) -> None:
-        db = next(get_db())
-        jobs = db.query(CronJob_).filter_by(enabled=True).all()
-        count = 0
-        for job in jobs:
-            try:
-                input_data = json.loads(job.input_data or "{}")
-                if job.cron_expr:
-                    self.add_cron(
-                        job.name, job.cron_expr, job.skill_name,
-                        input_data, job.governor_required,
-                    )
-                elif job.interval_s:
-                    self.add_interval(
-                        job.name, job.interval_s, job.skill_name,
-                        input_data, job.governor_required,
-                    )
-                count += 1
-            except Exception as e:
-                logger.warning("Failed to restore cron job %s: %s", job.name, e)
-        logger.info("Restored %d cron jobs from DB.", count)
+        with get_db_session() as db:
+            jobs = db.query(CronJob_).filter_by(enabled=True).all()
+            count = 0
+            for job in jobs:
+                try:
+                    input_data = json.loads(job.input_data or "{}")
+                    if job.cron_expr:
+                        self.add_cron(
+                            job.name, job.cron_expr, job.skill_name,
+                            input_data, job.governor_required,
+                        )
+                    elif job.interval_s:
+                        self.add_interval(
+                            job.name, job.interval_s, job.skill_name,
+                            input_data, job.governor_required,
+                        )
+                    count += 1
+                except Exception as e:
+                    logger.warning("Failed to restore cron job %s: %s", job.name, e)
+            logger.info("Restored %d cron jobs from DB.", count)
 
     # ── 查詢 ──────────────────────────────────────────────────────────────────
 
     def list_jobs(self) -> list[dict]:
-        db = next(get_db())
-        rows = db.query(CronJob_).all()
-        result = []
-        for r in rows:
-            next_run = None
-            try:
-                job = self._scheduler.get_job(r.name)
-                if job:
-                    next_run = job.next_run_time.isoformat() if job.next_run_time else None
-            except Exception:
-                pass
-            result.append({
-                "id": r.id,
-                "name": r.name,
-                "cron_expr": r.cron_expr,
-                "interval_s": r.interval_s,
-                "skill_name": r.skill_name,
-                "enabled": r.enabled,
-                "governor_required": r.governor_required,
-                "last_run": r.last_run.isoformat() if r.last_run else None,
-                "next_run": next_run,
-                "run_count": r.run_count,
-            })
-        return result
+        with get_db_session() as db:
+            rows = db.query(CronJob_).all()
+            result = []
+            for r in rows:
+                next_run = None
+                try:
+                    job = self._scheduler.get_job(r.name)
+                    if job:
+                        next_run = job.next_run_time.isoformat() if job.next_run_time else None
+                except Exception:
+                    pass
+                result.append({
+                    "id": r.id,
+                    "name": r.name,
+                    "cron_expr": r.cron_expr,
+                    "interval_s": r.interval_s,
+                    "skill_name": r.skill_name,
+                    "enabled": r.enabled,
+                    "governor_required": r.governor_required,
+                    "last_run": r.last_run.isoformat() if r.last_run else None,
+                    "next_run": next_run,
+                    "run_count": r.run_count,
+                })
+            return result
 
     def trigger_now(self, name: str) -> None:
         """手動立即觸發一個排程工作"""
-        db = next(get_db())
-        rec = db.query(CronJob_).filter_by(name=name).first()
-        if not rec:
-            raise ValueError(f"Cron job '{name}' not found.")
-        input_data = json.loads(rec.input_data or "{}")
-        self._run_job(name, rec.skill_name, input_data, rec.governor_required)
+        with get_db_session() as db:
+            rec = db.query(CronJob_).filter_by(name=name).first()
+            if not rec:
+                raise ValueError(f"Cron job '{name}' not found.")
+            input_data = json.loads(rec.input_data or "{}")
+            self._run_job(name, rec.skill_name, input_data, rec.governor_required)
 
 
 # 全域單例

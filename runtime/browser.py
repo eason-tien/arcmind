@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any
 
 from config.settings import settings
-from db.schema import BrowserSession_, get_db
+from db.schema import BrowserSession_, get_db, get_db_session
 
 logger = logging.getLogger("arcmind.browser")
 
@@ -61,21 +61,21 @@ class BrowserSession:
         self._started = True
 
         # DB record
-        db = next(get_db())
-        rec = BrowserSession_(
-            task_id=self.task_id,
-            url=url,
-            status="active",
-            actions="[]",
-        )
-        db.add(rec)
-        db.commit()
-        db.refresh(rec)
-        self._db_id = rec.id
+        with get_db_session() as db:
+            rec = BrowserSession_(
+                task_id=self.task_id,
+                url=url,
+                status="active",
+                actions="[]",
+            )
+            db.add(rec)
+            db.commit()
+            db.refresh(rec)
+            self._db_id = rec.id
 
-        if url:
-            self.navigate(url)
-        return self
+            if url:
+                self.navigate(url)
+            return self
 
     def close(self) -> None:
         if self._started:
@@ -226,15 +226,15 @@ class BrowserSession:
         if not self._db_id:
             return
         try:
-            db = next(get_db())
-            rec = db.query(BrowserSession_).filter_by(id=self._db_id).first()
-            if rec:
-                rec.actions = json.dumps(self._actions)
-                if status:
-                    rec.status = status
-                    if status == "closed":
-                        rec.closed_at = datetime.utcnow()
-                db.commit()
+            with get_db_session() as db:
+                rec = db.query(BrowserSession_).filter_by(id=self._db_id).first()
+                if rec:
+                    rec.actions = json.dumps(self._actions)
+                    if status:
+                        rec.status = status
+                        if status == "closed":
+                            rec.closed_at = datetime.utcnow()
+                    db.commit()
         except Exception as e:
             logger.warning("Browser DB update failed: %s", e)
 

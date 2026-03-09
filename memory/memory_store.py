@@ -219,6 +219,24 @@ class MemoryStore:
                         importance=confidence, metadata=meta,
                         tags=kw.get("tags"), dedup=kw.get("dedup", True))
 
+    def add_repair_causal(self, error_type: str, error_msg: str, fix_action: str, success: bool, **kw) -> str | None:
+        """專門儲存維修紀錄的因果記憶"""
+        status_text = "成功修復" if success else "修復失敗"
+        content = f"【問題】({error_type}) {error_msg}\n【動作】{fix_action}\n【結果】{status_text}"
+        meta = {
+            "error_type": error_type,
+            "success": success,
+            "fix_action": fix_action
+        }
+        # 維修成功的記憶重要性極高，確保之後檢索得到
+        importance = 0.9 if success else 0.5
+        tags = kw.get("tags", [])
+        if "repair" not in tags:
+            tags.append("repair")
+        return self.add(content, source="smart_repair", memory_type="causal",
+                        importance=importance, metadata=meta,
+                        tags=tags, dedup=kw.get("dedup", True))
+
     # ── Query Methods ────────────────────────────────────────────────────────
 
     def _find_similar(self, query_vec: list[float], memory_type: str | None = None,
@@ -247,6 +265,7 @@ class MemoryStore:
                     "source": row["source"],
                     "importance": row["importance"],
                     "tags": json.loads(row["tags"] or "[]"),
+                    "metadata_": row["metadata_"],
                     "created_at": row["created_at"],
                     "similarity": sim,
                     "score": sim * 0.7 + row["importance"] * 0.3,

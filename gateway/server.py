@@ -19,12 +19,20 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import tempfile
 import time
+import argparse
+from pathlib import Path
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, UploadFile, File, APIRouter
+from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from gateway.session_manager import session_manager, SessionContext
@@ -36,6 +44,41 @@ from gateway.router import (
 logger = logging.getLogger("arcmind.gateway.server")
 
 router = APIRouter()
+
+
+# ── Activity Broadcaster ────────────────────────────────────────────────────────
+class ActivityBroadcaster:
+    """
+    Global broadcaster for sending real-time agent activity logs
+    to connected OpenClaw frontend dashboards.
+    """
+    def __init__(self):
+        self._connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self._connections.append(websocket)
+        logger.info("[ActivityBroadcaster] Dashboard connected. Active: %d", len(self._connections))
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self._connections:
+            self._connections.remove(websocket)
+            logger.info("[ActivityBroadcaster] Dashboard disconnected. Active: %d", len(self._connections))
+
+    async def broadcast(self, message: dict):
+        if not self._connections:
+            return
+        dead_connections = []
+        for connection in self._connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                dead_connections.append(connection)
+        
+        for dead in dead_connections:
+            self.disconnect(dead)
+
+activity_broadcaster = ActivityBroadcaster()
 
 
 # ── Delivery Queue ──────────────────────────────────────────────────────────
@@ -383,11 +426,115 @@ async def _handle_agent_task(
             return f"❌ 執行失敗: {result.error or '未知錯誤'}"
 
     except Exception as e:
-        logger.exception("[Gateway] agent task error: %s", e)
-        return f"⚠️ 處理過程發生錯誤: {e}"
+        logger.exception("[Gateway/REST] error processing message: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/v1/chat/audio")
+async def chat_audio_endpoint(
+    session_id: str,
+    audio: UploadFile = File(...)
+):
+    """
+    REST endpoint to accept voice input from UI.
+    Transcribes audio -> Process with OODA -> TTS audio -> Return Base64
+    """
+    logger.info("[Gateway/REST] received audio from session=%s", session_id)
+    
+    # 1. Save uploaded file
+    suffix = Path(audio.filename).suffix if audio.filename else ".webm"
+    temp_file = Path(tempfile.gettempdir()) / f"upload_{session_id}_{int(time.time())}{suffix}"
+    
+    try:
+        content = await audio.read()
+        with open(temp_file, "wb") as f:
+            f.write(content)
+            
+        # 2. STT via Voice module
+        from channels.voice import transcribe
+        text = await asyncio.to_thread(transcribe, temp_file)
+        if not text:
+            text = "(無法辨識語音)"
+            
+        # 3. Route to main logic
+        msg = InboundMessage(
+            channel="api",
+            user_id="desktop_user",
+            session_id=session_id,
+            text=text,
+            metadata={"output_mode": "voice"}
+        )
+        
+        response = await process_message(msg)
+        
+        # 4. Generate TTS via Voice module
+        import base64
+        import re
+        from channels.voice import synthesize_async
+        
+        # Sanitize markdown symbols so the TTS doesn't speak "asterisk asterisk"
+        clean_tts_text = re.sub(r'[*_~`#>]', '', response.text)
+        tts_path = await synthesize_async(clean_tts_text)
+        
+        with open(tts_path, "rb") as f:
+            audio_data = f.read()
+            audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+            
+        return {
+            "transcript": text,
+            "text": response.text,
+            "audio_base64": audio_base64
+        }
+        
+    except Exception as e:
+        logger.exception("[Gateway/REST] error processing audio: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Cleanup
+        if temp_file.exists():
+            temp_file.unlink()
 
 
 # ── WebSocket Endpoint ──────────────────────────────────────────────────────
+
+@router.websocket("/ws/activity")
+async def activity_websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time Agent Live Feed dashboard.
+    """
+    await activity_broadcaster.connect(websocket)
+    try:
+        while True:
+            # Keep connection alive
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        activity_broadcaster.disconnect(websocket)
+    except Exception as e:
+        logger.error("[Gateway/Activity WS] Error: %s", e)
+        activity_broadcaster.disconnect(websocket)
+
+
+class ActivityPayload(BaseModel):
+    agent: str
+    action: str
+    details: str = ""
+    status: str = "success"
+
+@router.post("/v1/internal/broadcast_activity")
+async def broadcast_activity(payload: ActivityPayload):
+    """Internal endpoint to trigger real-time dashboard updates from sync code."""
+    import time
+    msg = {
+        "id": f"evt_{int(time.time()*1000)}",
+        "timestamp": int(time.time()*1000),
+        "agent": payload.agent,
+        "action": payload.action,
+        "details": payload.details,
+        "status": payload.status
+    }
+    await activity_broadcaster.broadcast(msg)
+    return {"status": "ok"}
+
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -509,7 +656,114 @@ async def chat_endpoint(req: ChatRequest):
     )
 
 
-# ── Gateway Status ──────────────────────────────────────────────────────────
+@router.post("/v1/chat/audio", response_model=ChatResponse)
+async def chat_audio_endpoint(
+    audio: UploadFile = File(...),
+    session_id: str = "1",
+    user_id: str = "api"
+):
+    """
+    REST chat endpoint that accepts an audio blob (webm/wav), 
+    transcribes it using Whisper STT, and processes it through the main pipeline.
+    """
+    if not audio:
+        raise HTTPException(status_code=400, detail="No audio file provided")
+
+    # Save uploaded file temporarily
+    temp_dir = Path(tempfile.gettempdir()) / "arcmind_api_uploads"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    
+    file_extension = audio.filename.split(".")[-1] if audio.filename else "webm"
+    temp_path = temp_dir / f"upload_{int(time.time())}.{file_extension}"
+    
+    try:
+        content = await audio.read()
+        temp_path.write_bytes(content)
+        
+        # 1. Transcribe audio to text
+        from channels.voice import transcribe
+        text = transcribe(str(temp_path))
+        
+        if not text:
+            raise HTTPException(status_code=400, detail="Could not transcribe audio")
+            
+        logger.info("[Gateway/Audio] Transcribed text: %s", text)
+        
+        # 2. Process message through main gateway pipeline
+        msg = InboundMessage.from_api(
+            command=text,
+            user_id=user_id,
+            session_id=session_id,
+        )
+        msg.metadata["source"] = "voice_rest"
+
+        response = await process_message(msg)
+        
+        # 3. Generate TTS audio response
+        audio_base64 = None
+        try:
+            from channels.voice import text_to_voice
+            voice_name = "zh-TW-HsiaoChenNeural" # Or read from config
+            ogg_path = await text_to_voice(response.text, voice_name)
+            
+            import base64
+            audio_bytes = ogg_path.read_bytes()
+            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+        except Exception as tts_err:
+            logger.error("[Gateway/Audio] TTS skipped or failed: %s", tts_err)
+
+        # We also return the transcript so the UI knows what the user actually "said"
+        return {
+            "text": response.text,
+            "session_id": response.session_id,
+            "elapsed_s": response.metadata.get("elapsed_s", 0.0),
+            "transcript": text,
+            "audio_base64": audio_base64
+        }
+
+    except Exception as e:
+        logger.exception("[Gateway/Audio] Audio processing failed")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
+
+# ── Gateway Status & Sync ───────────────────────────────────────────────────
+
+@router.get("/v1/chat/sessions")
+def list_chat_sessions():
+    """Returns a list of all active sessions for UI rendering."""
+    # Ensure we load up-to-date data (session_manager.list_sessions serves from memory)
+    sessions = session_manager.list_sessions()
+    
+    # Sort by activity, descending
+    sessions.sort(key=lambda s: s.get("last_activity", ""), reverse=True)
+    return {"sessions": sessions}
+
+@router.get("/v1/chat/sessions/{session_id}/history")
+def get_chat_history(session_id: str):
+    """Returns the message history for a specific session_id to render UI chat bubbles."""
+    ctx = session_manager.get(session_id)
+    if not ctx:
+        return {"session_id": session_id, "messages": []}
+    
+    messages = []
+    # Build unique IDs for UI keys, mapping history format to ChatStore format
+    for idx, turn in enumerate(ctx.history):
+        messages.append({
+            "id": f"{session_id}_msg_{idx}",
+            "role": turn.get("role", "assistant"),
+            "content": turn.get("content", ""),
+            "timestamp": turn.get("timestamp", "")
+        })
+        
+    return {
+        "session_id": session_id,
+        "messages": messages,
+        "state": ctx.state,
+    }
 
 @router.get("/v1/gateway/status")
 def gateway_status():

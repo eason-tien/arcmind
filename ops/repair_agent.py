@@ -184,7 +184,7 @@ def _check_port(result: RepairResult) -> None:
     """Check if port 8100 is occupied by a zombie process."""
     try:
         out = subprocess.run(
-            ["lsof", "-ti", f":{_PORT}"],
+            ["/usr/sbin/lsof", "-ti", f":{_PORT}"],
             capture_output=True, text=True, timeout=5,
         )
         pids = out.stdout.strip().split("\n")

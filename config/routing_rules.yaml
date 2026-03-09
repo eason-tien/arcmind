@@ -14,12 +14,12 @@ default: custom:MiniMax-M2.5
 
 # 任務類型路由
 task_type_rules:
-  # 一般任務 → MiniMax M2.5（主力）
+  # 一般任務 → MiniMax M2.5
   - match: [code_gen, summarize, plan, browser, file_ops, general, code_review, architecture, complex_analysis, deep_reasoning]
     model: custom:MiniMax-M2.5
     max_tokens: 8192
 
-  # 快速分類 → MiniMax（低延遲）
+  # 快速分類 → MiniMax M2.5
   - match: [classify, quick_check, format, extract, web_search]
     model: custom:MiniMax-M2.5
     max_tokens: 2048
@@ -34,7 +34,7 @@ task_type_rules:
     model: ollama:qwen3:14b@192.168.1.151
     max_tokens: 8192
 
-  # Analysis Agent → NVIDIA 免费 70B
+  # Analysis Agent
   - match: [analysis, summarize, data, report]
     model: nvidia:meta/llama-3.1-70b-instruct
     max_tokens: 8192

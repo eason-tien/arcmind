@@ -1,260 +1,93 @@
-# -*- coding: utf-8 -*-
 """
-ArcMind — Agent Registry
-==========================
-JSON-based Agent Registry for multi-agent delegation.
-
-每個 Agent 綁定：model、capabilities、system_prompt。
-MAIN Agent 作為調度主管，sub-agents 處理專業任務。
-
-用法：
-  from runtime.agent_registry import agent_registry
-
-  agents = agent_registry.list_agents()
-  code_agent = agent_registry.get("code")
-  matched = agent_registry.find_by_capability("coding")
+ArcMind Agent Registry
+Defines the "Employees" of the Zero-Human Company.
+Each role has specific tool access, budget models, and system prompts.
 """
-from __future__ import annotations
+from typing import Dict, List, Optional
+from dataclasses import dataclass
 
-import json
-import logging
-from pathlib import Path
-from typing import Any, Optional
-
-logger = logging.getLogger("arcmind.agent_registry")
-
-# Default path to agents.json
-_AGENTS_FILE = Path(__file__).parent.parent / "config" / "agents.json"
-
-
-class AgentConfig:
-    """Deserialized agent configuration (read-only view)."""
-
-    def __init__(self, data: dict):
-        self.id: str = data.get("id", "")
-        self.name: str = data.get("name", "")
-        self.model: str = data.get("model", "")
-        self.purpose: str = data.get("purpose", "")
-        self.capabilities: list[str] = data.get("capabilities", [])
-        self.system_prompt: str = data.get("system_prompt", "")
-        self.enabled: bool = data.get("enabled", True)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "name": self.name,
-            "model": self.model,
-            "purpose": self.purpose,
-            "capabilities": self.capabilities,
-            "enabled": self.enabled,
-        }
-
-    def __repr__(self):
-        return f"<Agent '{self.id}' model={self.model} caps={self.capabilities}>"
-
+@dataclass
+class AgentPersona:
+    role: str
+    description: str
+    system_prompt: str
+    allowed_tools: List[str]
+    default_model: str
 
 class AgentRegistry:
-    """
-    JSON-based Agent Registry.
-    Loads agents from config/agents.json with hot-reload support.
-    """
+    def __init__(self):
+        self._personas: Dict[str, AgentPersona] = {}
+        self._register_defaults()
 
-    def __init__(self, path: Path | str | None = None):
-        self._path = Path(path) if path else _AGENTS_FILE
-        self._agents: dict[str, AgentConfig] = {}
-        self._mtime: float = 0
-        self._default_agent: str = "main"
-        self._load()
+    def _register_defaults(self):
+        # 1. The CEO (Main ArcMind Agent)
+        self.register(AgentPersona(
+            role="ceo",
+            description="The chief executive orchestrator. Handles high-level goals and delegates to others.",
+            system_prompt=(
+                "You are the CEO of this autonomous system. Your job is to understand user requests, "
+                "break them down into tasks, and delegate them to your specialized sub-agents "
+                "(like researcher or engineer) when appropriate. You focus on the big picture."
+            ),
+            allowed_tools=["__all__"], # CEO has access to all tools
+            default_model="claude"
+        ))
 
-    def _load(self) -> None:
-        """Load or reload agents.json."""
-        if not self._path.exists():
-            logger.warning("[AgentRegistry] %s not found", self._path)
-            return
+        # 2. The Researcher
+        self.register(AgentPersona(
+            role="researcher",
+            description="Specializes in gathering information from the web or internal memories.",
+            system_prompt=(
+                "You are the Researcher agent. Your sole purpose is to gather information required by your manager. "
+                "Use web search and memory retrieval. Provide concise, accurate summaries."
+            ),
+            allowed_tools=["web_search", "memory_query", "read_url_content"],
+            default_model="ollama" # Low budget model
+        ))
 
-        try:
-            mtime = self._path.stat().st_mtime
-            if mtime == self._mtime and self._agents:
-                return  # No change
+        # 3. The Engineer
+        self.register(AgentPersona(
+            role="engineer",
+            description="Specializes in writing code, running commands, and modifying the file system.",
+            system_prompt=(
+                "You are the Software Engineer agent. Your job is to safely execute commands, read files, "
+                "and write code to fulfill the technical requirements of your manager."
+            ),
+            allowed_tools=["run_command", "view_file", "write_to_file", "replace_file_content", "grep_search"],
+            default_model="claude" # High capability model
+        ))
 
-            with open(self._path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+        # 4. The Windows Engineer (Remote Worker)
+        self.register(AgentPersona(
+            role="windows_engineer",
+            description="Specializes in executing tasks on the remote Windows PC at 192.168.1.151.",
+            system_prompt=(
+                "You are the Windows Engineer agent residing on a remote Windows PC. "
+                "Your job is to safely execute powershell commands and python scripts sent from the macOS CEO."
+            ),
+            allowed_tools=["windows_delegation"], # Special tool routing
+            default_model="claude"
+        ))
 
-            self._default_agent = data.get("default_agent", "main")
-            self._agents = {}
-            for agent_data in data.get("agents", []):
-                agent = AgentConfig(agent_data)
-                if agent.enabled:
-                    self._agents[agent.id] = agent
+    def register(self, persona: AgentPersona):
+        self._personas[persona.role] = persona
 
-            self._mtime = mtime
-            logger.info("[AgentRegistry] loaded %d agents from %s",
-                        len(self._agents), self._path.name)
-        except Exception as e:
-            logger.error("[AgentRegistry] failed to load: %s", e)
+    def get(self, role: str) -> Optional[AgentPersona]:
+        return self._personas.get(role)
 
-    def _ensure_fresh(self) -> None:
-        """Hot-reload if file changed."""
-        try:
-            if self._path.exists():
-                mtime = self._path.stat().st_mtime
-                if mtime != self._mtime:
-                    self._load()
-        except Exception:
-            pass
+    def list_roles(self) -> List[str]:
+        return list(self._personas.keys())
 
-    def get(self, agent_id: str) -> Optional[AgentConfig]:
-        """Get agent by ID."""
-        self._ensure_fresh()
-        return self._agents.get(agent_id)
+    def list_agents(self) -> List[Dict]:
+        """List all agents with their details"""
+        return [
+            {
+                "role": p.role,
+                "description": p.description,
+                "default_model": p.default_model,
+                "allowed_tools": p.allowed_tools
+            }
+            for p in self._personas.values()
+        ]
 
-    def get_default(self) -> Optional[AgentConfig]:
-        """Get the default (MAIN) agent."""
-        self._ensure_fresh()
-        return self._agents.get(self._default_agent)
-
-    def list_agents(self) -> list[AgentConfig]:
-        """List all enabled agents."""
-        self._ensure_fresh()
-        return list(self._agents.values())
-
-    def find_by_capability(self, capability: str) -> list[AgentConfig]:
-        """Find agents that have a given capability."""
-        self._ensure_fresh()
-        return [a for a in self._agents.values() if capability in a.capabilities]
-
-    def get_sub_agents(self) -> list[AgentConfig]:
-        """Get all agents except MAIN."""
-        self._ensure_fresh()
-        return [a for a in self._agents.values() if a.id != self._default_agent]
-
-    def format_roster(self) -> str:
-        """Format agent roster for display."""
-        self._ensure_fresh()
-        lines = []
-        for a in self._agents.values():
-            role = "👑 MAIN" if a.id == self._default_agent else "  └─"
-            lines.append(f"{role} **{a.name}** (`{a.id}`) — {a.model}")
-            lines.append(f"     用途: {a.purpose}")
-            lines.append(f"     能力: {', '.join(a.capabilities)}")
-        return "\n".join(lines)
-
-    def status(self) -> dict:
-        self._ensure_fresh()
-        return {
-            "total_agents": len(self._agents),
-            "default": self._default_agent,
-            "agents": [a.to_dict() for a in self._agents.values()],
-        }
-
-    # ── CRUD Operations ──────────────────────────────────────────────────
-
-    def _save(self) -> None:
-        """Atomic write agents.json."""
-        data = {
-            "version": "1.0",
-            "default_agent": self._default_agent,
-            "agents": [],
-        }
-        for a in self._agents.values():
-            data["agents"].append({
-                "id": a.id,
-                "name": a.name,
-                "model": a.model,
-                "purpose": a.purpose,
-                "capabilities": a.capabilities,
-                "system_prompt": a.system_prompt,
-                "enabled": a.enabled,
-            })
-
-        tmp = self._path.with_suffix(".tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        tmp.replace(self._path)
-        self._mtime = self._path.stat().st_mtime
-        logger.info("[AgentRegistry] saved %d agents", len(self._agents))
-
-    def add_agent(
-        self,
-        agent_id: str,
-        name: str,
-        model: str,
-        purpose: str,
-        capabilities: list[str] | None = None,
-        system_prompt: str = "",
-    ) -> str:
-        """Add a new agent. Returns confirmation message."""
-        self._ensure_fresh()
-
-        if agent_id in self._agents:
-            return f"❌ Agent '{agent_id}' 已存在。請用 update_agent 更新。"
-
-        agent = AgentConfig({
-            "id": agent_id,
-            "name": name,
-            "model": model,
-            "purpose": purpose,
-            "capabilities": capabilities or [],
-            "system_prompt": system_prompt,
-            "enabled": True,
-        })
-        self._agents[agent_id] = agent
-        self._save()
-
-        return (
-            f"✅ Agent 已添加！\n"
-            f"  ID: {agent_id}\n"
-            f"  名稱: {name}\n"
-            f"  模型: {model}\n"
-            f"  用途: {purpose}\n"
-            f"  能力: {', '.join(capabilities or [])}"
-        )
-
-    def remove_agent(self, agent_id: str) -> str:
-        """Remove an agent. Cannot remove MAIN."""
-        self._ensure_fresh()
-
-        if agent_id == self._default_agent:
-            return "❌ 不能移除 MAIN Agent。"
-
-        if agent_id not in self._agents:
-            return f"❌ Agent '{agent_id}' 不存在。"
-
-        name = self._agents[agent_id].name
-        del self._agents[agent_id]
-        self._save()
-        return f"✅ Agent '{name}' ({agent_id}) 已移除。"
-
-    def update_agent(
-        self,
-        agent_id: str,
-        name: str | None = None,
-        model: str | None = None,
-        purpose: str | None = None,
-        capabilities: list[str] | None = None,
-        system_prompt: str | None = None,
-    ) -> str:
-        """Update an existing agent's configuration."""
-        self._ensure_fresh()
-
-        if agent_id not in self._agents:
-            return f"❌ Agent '{agent_id}' 不存在。"
-
-        old = self._agents[agent_id]
-        updated = AgentConfig({
-            "id": agent_id,
-            "name": name or old.name,
-            "model": model or old.model,
-            "purpose": purpose or old.purpose,
-            "capabilities": capabilities if capabilities is not None else old.capabilities,
-            "system_prompt": system_prompt if system_prompt is not None else old.system_prompt,
-            "enabled": True,
-        })
-        self._agents[agent_id] = updated
-        self._save()
-        return f"✅ Agent '{agent_id}' 已更新。"
-
-
-# ── Singleton ──
 agent_registry = AgentRegistry()
-

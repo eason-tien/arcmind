@@ -104,19 +104,28 @@ def parse_error(err_log_path: Path = _ERR_LOG) -> dict | None:
 
 def _lookup_known_solution(error_type: str, error_message: str) -> dict | None:
     """查詢本地已知的修復方案"""
-    if not _SOLUTION_DB.exists():
-        return None
-    
     try:
-        for line in _SOLUTION_DB.read_text().strip().splitlines():
-            solution = json.loads(line)
-            # 匹配錯誤類型 + 關鍵字
-            if solution.get("error_type") == error_type:
-                if solution.get("keyword", "") in error_message:
-                    logger.info("[SmartRepair] Found known solution: %s", solution.get("fix_action"))
-                    return solution
-    except Exception:
-        pass
+        from memory.memory_store import memory_store
+        # 用錯誤關鍵字搜尋因果記憶
+        search_term = f"{error_type} {error_message[:50]}"
+        hits = memory_store.query_causal(search_term, top_k=3)
+        for hit in hits:
+            # sqlite returns the row dict. The column is 'metadata_' and it's a JSON string.
+            meta_str = hit.get("metadata_", "{}")
+            if not meta_str:
+                meta_str = "{}"
+            meta = json.loads(meta_str) if isinstance(meta_str, str) else meta_str
+            # 確認是相同的錯誤類型，且之前有成功修復
+            if meta.get("error_type") == error_type and meta.get("success") is True:
+                logger.info("[SmartRepair] Found known solution in Causal Memory: %s", meta.get("fix_action"))
+                return {
+                    "error_type": meta.get("error_type"),
+                    "fix_action": meta.get("fix_action"),
+                    "fix_command": meta.get("fix_action"), # simplify the old db format mapping
+                    "fix_type": "pip_install" if "pip install" in meta.get("fix_action", "") else "manual",
+                }
+    except Exception as e:
+        logger.warning("[SmartRepair] Failed to query known solution: %s", e)
     return None
 
 
@@ -124,21 +133,16 @@ def _save_solution(error_type: str, keyword: str, fix_action: str,
                    fix_command: str, success: bool):
     """儲存修復方案到記憶庫"""
     try:
-        _SOLUTION_DB.parent.mkdir(parents=True, exist_ok=True)
-        entry = {
-            "ts": datetime.now().isoformat(),
-            "error_type": error_type,
-            "keyword": keyword,
-            "fix_action": fix_action,
-            "fix_command": fix_command,
-            "success": success,
-            "used_count": 1,
-        }
-        with open(_SOLUTION_DB, "a") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        logger.info("[SmartRepair] Saved solution: %s → %s", error_type, fix_action)
+        from memory.memory_store import memory_store
+        memory_store.add_repair_causal(
+            error_type=error_type,
+            error_msg=keyword,
+            fix_action=fix_command or fix_action,
+            success=success
+        )
+        logger.info("[SmartRepair] Saved solution to Causal Memory: %s → %s", error_type, fix_action)
     except Exception as e:
-        logger.warning("[SmartRepair] Failed to save solution: %s", e)
+        logger.warning("[SmartRepair] Failed to save solution to Causal Memory: %s", e)
 
 
 # ── 3. Web 搜尋修復 ──────────────────────────────────────────
@@ -243,9 +247,47 @@ def _analyze_search_results(error_info: dict, results: list[dict]) -> dict | Non
     return None
 
 
-# ── 4. 自動修復執行 ──────────────────────────────────────────
+# ── 4. 自動修復執行與反思 (Reflection) ──────────────────────────
 
-def _execute_fix(fix: dict) -> bool:
+def _reflect_on_fix(error_info: dict, fix: dict) -> bool:
+    """
+    透過 LLM 反思並評估提議的修復是否安全。
+    如果包含 rm -rf 等破壞性指令，LLM 應能即時阻擋。
+    """
+    try:
+        from runtime.model_router import model_router
+        prompt = f"""
+You are an expert systems Linter and Reviewer for ArcMind.
+The system encountered the following error:
+Error Type: {error_info.get('error_type')}
+Error Message: {error_info.get('error_message')}
+
+The proposed fix action is: 
+Action: {fix.get('fix_action')}
+Command: {fix.get('fix_command', 'None')}
+
+Evaluate if this fix is SAFE and CORRECT to execute automatically.
+- Does it contain dangerous destructive commands (e.g., rm -rf /)?
+- Is it a reasonable attempt to fix the stated error?
+If safe, reply ONLY with "APPROVED: <brief reason>".
+If unsafe or incorrect, reply ONLY with "REJECTED: <brief reason>".
+"""
+        resp = model_router.complete(prompt=prompt, task_type="general", budget="low")
+        decision = resp.content.strip().upper()
+        
+        if decision.startswith("APPROVED"):
+            logger.info("[SmartRepair] Reflection: APPROVED (%s)", decision[9:].strip())
+            return True
+        else:
+            logger.warning("[SmartRepair] Reflection: REJECTED (%s)", decision)
+            return False
+    except Exception as e:
+        logger.warning("[SmartRepair] Reflection failed, defaulting to safe mode: %s", e)
+        # 為了安全，反思失敗預設拒絕，或者根據設計只能允許絕對安全的指令
+        return False
+
+
+def _execute_fix(error_info: dict, fix: dict) -> bool:
     """執行修復動作"""
     fix_cmd = fix.get("fix_command", "")
     fix_type = fix.get("fix_type", "")
@@ -260,9 +302,13 @@ def _execute_fix(fix: dict) -> bool:
         logger.warning("[SmartRepair] Fix type '%s' not auto-executable", fix_type)
         return False
     
-    # 額外安全檢查
+    # 基本啟發式安全檢查
     if any(danger in fix_cmd for danger in ["rm ", "sudo", "chmod", "> /", "| sh"]):
         logger.warning("[SmartRepair] Dangerous command blocked: %s", fix_cmd)
+        return False
+        
+    # 高階反思檢查 (Reflection Loop)
+    if not _reflect_on_fix(error_info, fix):
         return False
     
     logger.info("[SmartRepair] Executing fix: %s", fix_cmd)
@@ -322,7 +368,7 @@ def smart_repair(err_log_path: Path = _ERR_LOG) -> dict:
             "confidence": 0.95,
             "source": "memory",
         }
-        success = _execute_fix(fix)
+        success = _execute_fix(error_info, fix)
         return {
             "status": "repaired" if success else "suggestion",
             "error": error_info,
@@ -361,7 +407,7 @@ def smart_repair(err_log_path: Path = _ERR_LOG) -> dict:
         }
     
     fix["source"] = "web_search"
-    success = _execute_fix(fix)
+    success = _execute_fix(error_info, fix)
     
     # 5. 學習記錄
     if success:

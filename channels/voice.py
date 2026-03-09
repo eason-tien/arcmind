@@ -14,6 +14,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 logger = logging.getLogger("arcmind.channels.voice")
@@ -29,33 +30,14 @@ _AUDIO_DIR = Path(tempfile.gettempdir()) / "arcmind_voice"
 _AUDIO_DIR.mkdir(exist_ok=True)
 
 
-# ── STT: Whisper ────────────────────────────────────────────────────────────
+# ── STT: SpeechRecognition ──────────────────────────────────────────────────
 
-def _get_openai_client():
-    """Get OpenAI client (via API key or Codex token)."""
-    import openai
-
-    api_key = os.getenv("OPENAI_API_KEY", "")
-    if not api_key:
-        # Try Codex token
-        try:
-            from runtime.model_router import _read_codex_token
-            api_key = _read_codex_token()
-        except Exception:
-            pass
-
-    if not api_key:
-        raise RuntimeError("No OpenAI API key or Codex token available for Whisper")
-
-    return openai.OpenAI(api_key=api_key)
-
-
-def convert_ogg_to_wav(ogg_path: str | Path) -> Path:
-    """Convert .ogg to .wav using ffmpeg."""
-    wav_path = _AUDIO_DIR / f"{Path(ogg_path).stem}.wav"
+def convert_to_wav(audio_path: str | Path) -> Path:
+    """Convert any audio file (.ogg, .webm, .m4a) to .wav using ffmpeg."""
+    wav_path = _AUDIO_DIR / f"{Path(audio_path).stem}_{int(time.time())}.wav"
     try:
         subprocess.run(
-            ["ffmpeg", "-y", "-i", str(ogg_path), "-ar", "16000",
+            ["ffmpeg", "-y", "-i", str(audio_path), "-ar", "16000",
              "-ac", "1", "-f", "wav", str(wav_path)],
             capture_output=True, check=True, timeout=30,
         )
@@ -67,30 +49,35 @@ def convert_ogg_to_wav(ogg_path: str | Path) -> Path:
 
 def transcribe(audio_path: str | Path) -> str:
     """
-    Transcribe audio file to text using OpenAI Whisper API.
+    Transcribe audio file to text using free Google Speech API.
     Supports: .ogg, .wav, .mp3, .m4a, .webm
     """
+    import speech_recognition as sr
     path = Path(audio_path)
 
-    # Convert .ogg to .wav if needed (Whisper API accepts .ogg but wav is more reliable)
-    if path.suffix in (".ogg", ".oga"):
-        path = convert_ogg_to_wav(path)
+    # SR only accepts wav natively, convert anything else (especially .webm from desktop)
+    if path.suffix.lower() not in (".wav", ".aiff", ".flac"):
+        path = convert_to_wav(path)
 
     try:
-        client = _get_openai_client()
-        with open(path, "rb") as f:
-            result = client.audio.transcriptions.create(
-                model=WHISPER_MODEL,
-                file=f,
-                language="zh",  # Hint: Chinese
-            )
-        text = result.text.strip()
-        logger.info("[Voice] STT: '%s' (%d chars)", text[:60], len(text))
+        r = sr.Recognizer()
+        with sr.AudioFile(str(path)) as source:
+            audio = r.record(source)
+
+        text = r.recognize_google(audio, language="zh-TW")
+        logger.info("[Voice] STT (Google): '%s' (%d chars)", text[:60], len(text))
         return text
 
+    except sr.UnknownValueError:
+        logger.warning("[Voice] STT (Google): Could not understand audio")
+        return ""
     except Exception as e:
-        logger.error("[Voice] Whisper transcription failed: %s", e)
+        logger.error("[Voice] Google transcription failed: %s", e)
         raise
+    finally:
+        # Cleanup temp wav immediately after memory load
+        if path != Path(audio_path) and path.exists():
+            path.unlink()
 
 
 # ── TTS: edge-tts ───────────────────────────────────────────────────────────

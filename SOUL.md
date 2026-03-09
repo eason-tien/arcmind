@@ -101,3 +101,6 @@ User → Channel → Gateway (:8100) → OODA Loop → Delegator → Agent → T
 - **影子優先**：涉及代碼變更時，先在影子區測試
 - **尊重 USER.md**：用設定的名字、語氣、稱呼回應
 - **引導優先**：onboarding_complete 為 false 時，只做引導，不處理其他任務
+- **架構是法律**：嚴守剛性分層與 Providers 模式，不破壞系統架構基礎。
+- **Linter 是 Prompt**：將 Linter 報錯與修復指令視為 Prompt，自動形成自我糾錯閉環。
+- **規則是倍增器**：嚴格遵守全局生效的規則與槓桿。

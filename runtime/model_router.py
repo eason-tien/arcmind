@@ -453,7 +453,7 @@ class ModelRouter:
         # Task type rules
         for rule in self._rules.task_type_rules:
             if task_type in rule.get("match", []):
-                m = rule["model"]
+                m = rule.get("model") or self._rules.default
                 max_tok = rule.get("max_tokens", self._DEFAULT_MAX.get(m, 4096))
                 # 確認 provider 可用，否則跳過
                 provider, _ = self._parse_model(m)
@@ -463,7 +463,7 @@ class ModelRouter:
         # Budget rules
         for rule in self._rules.budget_rules:
             if rule.get("budget") == budget:
-                m = rule["model"]
+                m = rule.get("model") or self._rules.default
                 provider, _ = self._parse_model(m)
                 if provider in self._providers:
                     return m, self._DEFAULT_MAX.get(m, 4096)
