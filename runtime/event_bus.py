@@ -61,6 +61,8 @@ class EventType(str, Enum):
     TASK_CREATED = "task_created"
     TASK_FAILED = "task_failed"
     AGENT_HANDOFF = "agent_handoff"
+    FEDERATION_TASK = "federation_task"
+    FEDERATION_RESULT = "federation_result"
 
 
 class EventPriority(int, Enum):

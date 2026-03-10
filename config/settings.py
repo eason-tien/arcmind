@@ -160,6 +160,13 @@ class Settings(BaseSettings):
         default="https://api.stepfun.com/v1", alias="STEPFUN_BASE_URL"
     )
 
+    # ── NVIDIA (GLM-5) ───────────────────────────────────────
+    nvidia_api_key: str = Field(default="", alias="NVIDIA_API_KEY")
+    nvidia_base_url: str = Field(
+        default="https://integrate.api.nvidia.com/v1", alias="NVIDIA_BASE_URL"
+    )
+    nvidia_model_name: str = Field(default="glm-5", alias="NVIDIA_MODEL_NAME")
+
     # ── OLLAMA 本地模型 ────────────────────────────────────────
     ollama_base_url: str = Field(
         default="http://localhost:11434/v1", alias="OLLAMA_BASE_URL"
@@ -179,6 +186,13 @@ class Settings(BaseSettings):
     custom_model_base_url: str = Field(default="", alias="CUSTOM_MODEL_BASE_URL")
     custom_model_api_key: str = Field(default="", alias="CUSTOM_MODEL_API_KEY")
     custom_model_name: str = Field(default="custom", alias="CUSTOM_MODEL_NAME")
+
+    # ── Federation (ArcMind ↔ ArcMind 跨實例協作) ──────────
+    federation_enabled: bool = Field(default=False, alias="FEDERATION_ENABLED")
+    federation_instance_id: str = Field(default="arcmind-main", alias="FEDERATION_INSTANCE_ID")
+    federation_api_key: str = Field(default="", alias="FEDERATION_API_KEY")
+    federation_peers: str = Field(default="", alias="FEDERATION_PEERS")  # 逗號分隔 URLs
+    federation_timeout: int = Field(default=120, alias="FEDERATION_TIMEOUT")  # 秒
 
     # ═══════════════════════════════════════════════════════════
     #  路徑設定
@@ -238,6 +252,7 @@ class Settings(BaseSettings):
         ("yi",          "yi_api_key"),
         ("baichuan",    "baichuan_api_key"),
         ("stepfun",     "stepfun_api_key"),
+        ("nvidia",      "nvidia_api_key"),
     ]
 
     def available_providers(self) -> list[str]:
@@ -287,6 +302,8 @@ class Settings(BaseSettings):
             "yi":          {"api_key": self.yi_api_key,          "base_url": self.yi_base_url},
             "baichuan":    {"api_key": self.baichuan_api_key,    "base_url": self.baichuan_base_url},
             "stepfun":     {"api_key": self.stepfun_api_key,     "base_url": self.stepfun_base_url},
+            "nvidia":      {"api_key": self.nvidia_api_key,       "base_url": self.nvidia_base_url,
+                           "model": self.nvidia_model_name},
             "ollama":      {"base_url": self.ollama_base_url,    "model": self.ollama_default_model},
             "ollama_remote": {"base_url": self.ollama_remote_base_url, "model": self.ollama_remote_default_model},
             "custom":      {"api_key": self.custom_model_api_key, "base_url": self.custom_model_base_url,

@@ -157,6 +157,28 @@ async def lifespan(app: FastAPI):
     delivery_task = asyncio.create_task(_delivery_worker(), name="delivery_worker")
     app.state.delivery_task = delivery_task
 
+    # ── Federation Bridge: 跨實例協作 ──
+    if settings.federation_enabled:
+        from runtime.federation import federation_bridge
+        federation_bridge.startup()
+
+        # 註冊 federation-sync cron
+        try:
+            if "federation-sync" not in existing_jobs:
+                cron_system.add_interval(
+                    name="federation-sync",
+                    seconds=300,  # 每 5 分鐘同步 peer capabilities
+                    skill_name="federation_sync",
+                    input_data={},
+                    governor_required=False,
+                )
+                logger.info("📅 Registered CRON: federation-sync (Every 300s)")
+        except Exception as e:
+            logger.warning("Failed to register federation-sync cron: %s", e)
+
+        logger.info("🔗 Federation enabled (instance=%s, peers=%d)",
+                     settings.federation_instance_id, len(federation_bridge._peers))
+
     yield
 
     # ── Shutdown ─────────────────────────────────────────────────────────────
@@ -214,10 +236,12 @@ def create_app() -> FastAPI:
     class APIKeyAuthMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
             path = request.url.path
-            # Allow public endpoints, static UI, and webhook endpoints without auth
+            # Allow public endpoints, static UI, webhook, and federation endpoints without main API key auth
+            # (federation routes use their own X-Federation-Key authentication)
             if (path in _PUBLIC_PATHS
                     or path.startswith("/ui")
-                    or path.startswith("/v1/webhooks")):
+                    or path.startswith("/v1/webhooks")
+                    or path.startswith("/v1/federation")):
                 return await call_next(request)
 
             # Check Authorization header or X-API-Key header
@@ -267,7 +291,17 @@ def create_app() -> FastAPI:
             "openclaw_enabled": settings.openclaw_enabled,
             "ai_providers": model_router.list_providers(),
             "event_bus": _eb.stats(),
+            "federation": _get_federation_summary(),
         }
+
+    def _get_federation_summary():
+        if not settings.federation_enabled:
+            return {"enabled": False}
+        try:
+            from runtime.federation import federation_bridge
+            return federation_bridge.summary()
+        except Exception:
+            return {"enabled": True, "error": "not initialized"}
 
     @app.get("/mgis/status")
     def mgis_status():
@@ -369,6 +403,12 @@ def create_app() -> FastAPI:
     app.include_router(session_router, prefix="/v1",      tags=["sessions"])
     app.include_router(github_router, prefix="/v1/github", tags=["github"])
     app.include_router(webhook_router, prefix="/v1/webhook", tags=["webhook"])
+
+    # ── Federation (ArcMind ↔ ArcMind 跨實例協作) ────────────────────────
+    if settings.federation_enabled:
+        from api.routes.federation_routes import router as federation_router
+        app.include_router(federation_router, prefix="/v1/federation", tags=["federation"])
+        logger.info("[App] Federation routes registered at /v1/federation")
 
     # ── Gateway (WebSocket + Chat) ────────────────────────────────────────
     from gateway.server import router as gateway_router

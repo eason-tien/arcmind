@@ -157,6 +157,10 @@ class DelegationMatch:
     capability: str
     confidence: float = 0.0
     hire_suggestion: Optional[str] = None  # template_id if agent needs hiring first
+    # ── Federation fields ──
+    remote: bool = False           # 是否為遠端 agent
+    peer_url: str = ""             # 遠端 peer URL
+    peer_instance_id: str = ""     # 遠端實例 ID
 
 
 @dataclass
@@ -189,14 +193,41 @@ class Delegator:
             pass
         return False
 
-    def _score_capabilities(self, command: str) -> list[tuple[str, int]]:
-        """Score all capabilities against the command. Returns sorted (cap, score) pairs."""
+    def _score_capabilities(self, command: str) -> list[tuple[str, float]]:
+        """
+        Score all capabilities against the command.
+        P1-5: 優先使用語義匹配（Capability Selector），關鍵字作為 fallback。
+        Returns sorted (cap, score) pairs.
+        """
+        # ── 語義路由（P1-5）──
+        # min_score 0.45: 過濾掉低相關性的「噪音匹配」（簡單問候等）
+        try:
+            from runtime.capability_selector import capability_selector
+            results = capability_selector.select_agents(command, top_k=5, min_score=0.45)
+            if results:
+                scores = []
+                seen_caps = set()
+                for r in results:
+                    cap = r.entry.metadata.get("capability", "general")
+                    if cap not in seen_caps:
+                        # 正規化分數到 0-5 範圍（與原始關鍵字計分相容）
+                        normalized_score = r.score * 5.0
+                        scores.append((cap, normalized_score))
+                        seen_caps.add(cap)
+                if scores:
+                    logger.info("[Delegator] Semantic routing: %s",
+                                ", ".join(f"{c}={s:.2f}" for c, s in scores[:3]))
+                    return scores
+        except Exception as e:
+            logger.debug("[Delegator] Semantic routing failed, using keyword fallback: %s", e)
+
+        # ── 關鍵字 Fallback ──
         cmd_lower = command.lower()
         scores = []
         for capability, keywords in _CAPABILITY_KEYWORDS.items():
             score = sum(1 for kw in keywords if kw in cmd_lower)
             if score > 0:
-                scores.append((capability, score))
+                scores.append((capability, float(score)))
         scores.sort(key=lambda x: x[1], reverse=True)
         return scores
 
@@ -216,11 +247,31 @@ class Delegator:
         )
 
     def _is_multi_agent_request(self, command: str) -> bool:
-        """Detect if command needs multiple agents (e.g., 'research then code')."""
+        """
+        Detect if command needs multiple agents (e.g., 'research then code').
+        P1-5: 語義信號 + 關鍵字信號混合判斷。
+        """
         cmd_lower = command.lower()
+        # 關鍵字信號
         for pattern in _MULTI_AGENT_SIGNALS:
             if re.search(pattern, cmd_lower):
                 return True
+
+        # 語義信號：檢查是否有多個不同類型的高分 Agent 匹配
+        # 閾值 0.50 防止簡單對話誤觸多 Agent
+        try:
+            from runtime.capability_selector import capability_selector
+            results = capability_selector.select_agents(command, top_k=3, min_score=0.50)
+            if len(results) >= 2:
+                # 確認是不同 agent
+                agent_ids = set(r.entry.metadata.get("agent_id") for r in results)
+                if len(agent_ids) >= 2:
+                    logger.debug("[Delegator] Semantic multi-agent signal: %s",
+                                 ", ".join(agent_ids))
+                    return True
+        except Exception:
+            pass
+
         return False
 
     # ── Single-agent routing ─────────────────────────────────────────────────
@@ -240,30 +291,21 @@ class Delegator:
         best_cap, best_score = scores[0]
         match = self._find_best_agent(best_cap)
         if not match:
-            # No active agent — check if a template could handle this
-            try:
-                from runtime.agent_templates import template_manager
-                suggestion = template_manager.suggest_hire(command)
-                if suggestion:
-                    logger.info("[Delegator] No active agent for '%s', suggest hiring: %s",
-                                best_cap, suggestion.template_id)
-                    # Return a match pointing to CEO but with hire_suggestion
-                    return DelegationMatch(
-                        agent_id="main",
-                        agent_name="CEO (suggest hire)",
-                        model="",
-                        system_prompt="",
-                        capability=best_cap,
-                        confidence=min(best_score / 3.0, 1.0),
-                        hire_suggestion=suggestion.template_id,
-                    )
-            except Exception:
-                pass
+            # No agent for this capability — return None so CEO handles it directly
+            logger.info("[Delegator] No agent for '%s', falling back to CEO", best_cap)
             return None
 
         match.confidence = min(best_score / 3.0, 1.0)  # Normalize to 0-1
 
-        logger.info("[Delegator] MATCH: '%s' → agent=%s cap=%s score=%d conf=%.2f",
+        # P1-5: 低信心度的匹配不委派 — 讓 CEO 直接處理
+        # 對於語義路由: best_score 是 raw_sim * 5.0，所以 0.50*5=2.5 / 3.0 = 0.83
+        # 閾值 0.60 = raw_sim 至少 0.36（合理的下限）
+        if match.confidence < 0.60:
+            logger.info("[Delegator] Low confidence %.2f for cap='%s', CEO handles directly",
+                        match.confidence, best_cap)
+            return None
+
+        logger.info("[Delegator] MATCH: '%s' → agent=%s cap=%s score=%.2f conf=%.2f",
                     command[:40], match.agent_id, best_cap, best_score, match.confidence)
         return match
 
@@ -299,6 +341,11 @@ class Delegator:
         seen_agents = set()
         for cap, score in scores:
             match = self._find_best_agent(cap)
+            if not match:
+                # No agent for this capability — skip it, CEO will handle if needed
+                logger.debug("[Delegator] Skipping cap '%s' (no agent available)", cap)
+                continue
+
             if match and match.agent_id not in seen_agents:
                 match.confidence = min(score / 3.0, 1.0)
                 steps.append(match)
@@ -332,6 +379,19 @@ class Delegator:
         prior_context: output from a previous step in a multi-agent plan.
         """
         t0 = time.time()
+
+        # Safety: verify agent actually exists in registry before executing
+        agent_check = agent_registry.get(match.agent_id)
+        if not agent_check:
+            logger.warning("[Delegator] Agent '%s' not in registry, skipping delegation", match.agent_id)
+            return {
+                "success": False,
+                "output": "",
+                "agent_id": match.agent_id,
+                "error": f"Agent '{match.agent_id}' not found",
+                "elapsed_s": 0,
+                "delegated": False,
+            }
 
         agent_system = match.system_prompt or system or ""
 
@@ -512,6 +572,119 @@ class Delegator:
             "delegated": True,
             "step_results": results,
         }
+
+    # ── Federation routing ───────────────────────────────────────────────────
+
+    async def route_federated(self, command: str) -> Optional[DelegationMatch]:
+        """
+        擴展路由：先本地 → 未命中再查遠端 peer capabilities。
+        Returns DelegationMatch (可能 remote=True) or None.
+        """
+        # 1. 先嘗試本地路由
+        local_match = self.route(command)
+        if local_match:
+            return local_match
+
+        # 2. Federation 未啟用 → fallback CEO
+        try:
+            from config.settings import settings
+            if not settings.federation_enabled:
+                return None
+        except Exception:
+            return None
+
+        # 3. 查詢遠端 peer capabilities
+        try:
+            from runtime.federation import federation_bridge
+            cmd_lower = command.lower()
+
+            for peer in federation_bridge._peers.values():
+                if not peer.is_healthy() or not peer.capabilities:
+                    continue
+
+                # 嘗試匹配 peer 的 capabilities
+                for cap in peer.capabilities:
+                    cap_lower = cap.lower()
+                    # 檢查 capability 關鍵字是否出現在 command 中
+                    if cap_lower in _CAPABILITY_KEYWORDS:
+                        keywords = _CAPABILITY_KEYWORDS[cap_lower]
+                        score = sum(1 for kw in keywords if kw in cmd_lower)
+                        if score > 0:
+                            match = DelegationMatch(
+                                agent_id=f"peer:{peer.instance_id}:{cap}",
+                                agent_name=f"[{peer.instance_id}] {cap}",
+                                model="remote",
+                                system_prompt="",
+                                capability=cap,
+                                confidence=min(score / 3.0, 1.0),
+                                remote=True,
+                                peer_url=peer.url,
+                                peer_instance_id=peer.instance_id,
+                            )
+                            if match.confidence >= 0.60:
+                                logger.info("[Delegator] FEDERATED MATCH: '%s' → peer=%s cap=%s conf=%.2f",
+                                            command[:40], peer.instance_id, cap, match.confidence)
+                                return match
+
+                    # 也檢查 skill: 前綴的 capabilities
+                    if cap.startswith("skill:"):
+                        skill_name = cap[6:]  # 去掉 "skill:" 前綴
+                        if skill_name.lower() in cmd_lower:
+                            match = DelegationMatch(
+                                agent_id=f"peer:{peer.instance_id}:{skill_name}",
+                                agent_name=f"[{peer.instance_id}] {skill_name}",
+                                model="remote",
+                                system_prompt="",
+                                capability=skill_name,
+                                confidence=0.75,
+                                remote=True,
+                                peer_url=peer.url,
+                                peer_instance_id=peer.instance_id,
+                            )
+                            logger.info("[Delegator] FEDERATED SKILL MATCH: '%s' → peer=%s skill=%s",
+                                        command[:40], peer.instance_id, skill_name)
+                            return match
+
+        except Exception as e:
+            logger.debug("[Delegator] Federation routing error: %s", e)
+
+        return None
+
+    async def execute_remote(
+        self,
+        match: DelegationMatch,
+        command: str,
+        session_id: str = "",
+        channel: str = "",
+    ) -> dict:
+        """
+        透過 FederationBridge 發送任務到遠端 peer。
+        結果通過 callback → EventBus → delivery_queue 異步回傳。
+
+        Returns: {accepted, task_id, peer_url, error}
+        """
+        if not match.remote or not match.peer_url:
+            return {"accepted": False, "error": "Not a remote match"}
+
+        try:
+            from runtime.federation import federation_bridge
+            result = await federation_bridge.send_task(
+                peer_url=match.peer_url,
+                task={
+                    "command": command,
+                    "agent_hint": match.capability,
+                    "context": {
+                        "capability": match.capability,
+                        "confidence": match.confidence,
+                    },
+                },
+                session_id=session_id,
+                channel=channel,
+            )
+            return result
+        except Exception as e:
+            logger.error("[Delegator] execute_remote failed: %s", e)
+            return {"accepted": False, "error": str(e)}
 
     @staticmethod
     def _emit_pipeline_event(action: str, pipeline_id: str, detail: dict) -> None:
