@@ -94,6 +94,11 @@ class TelegramChannel(Channel):
         self.token = token
         self.allowed_chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID", "")
         self._app = None  # telegram.ext.Application
+        try:
+            from version import __version__
+            self._version = __version__
+        except Exception:
+            self._version = "0.7.0"
 
     async def start(self) -> None:
         """Start Telegram long-polling."""
@@ -116,6 +121,15 @@ class TelegramChannel(Channel):
 
         self._running = True
         logger.info("[Telegram] Starting bot polling...")
+
+        # Global callback for all Telegram sessions to push messages from queue
+        from gateway.server import delivery_queue
+        async def _global_tg_delivery(out_msg: OutboundMessage):
+            if out_msg.channel == "telegram":
+                await self.send(out_msg)
+        
+        # Delivery Worker in gateway/server.py handles sending to Telegram.
+        pass
 
         app = Application.builder().token(self.token).build()
 
@@ -168,10 +182,14 @@ class TelegramChannel(Channel):
         except asyncio.CancelledError:
             pass
         finally:
-            if app.updater.running:
-                await app.updater.stop()
-            await app.stop()
-            await app.shutdown()
+            try:
+                if app.updater and app.updater.running:
+                    await app.updater.stop()
+                if app.running:
+                    await app.stop()
+                await app.shutdown()
+            except Exception as cleanup_err:
+                logger.warning("[Telegram] Cleanup error (safe to ignore): %s", cleanup_err)
             self._running = False
 
     async def stop(self) -> None:
@@ -256,7 +274,7 @@ class TelegramChannel(Channel):
         model = pref["model_override"] or "自動"
         mode = pref["output_mode"]
         await update.message.reply_text(
-            "🧠 *ArcMind v0.3.0*\n"
+            f"🧠 *ArcMind v{self._version}*\n"
             "Hi! I'm ArcMind, your autonomous AI assistant.\n\n"
             f"📡 當前模型：`{model}`\n"
             f"📋 輸出模式：`{mode}`\n\n"
@@ -427,17 +445,19 @@ class TelegramChannel(Channel):
 
             try:
                 response = await process_message(msg)
+                
+                # If there's an immediate synchronous response (like /status), send it now.
+                # Async agent tasks usually return an empty text because they respond later via queue.
+                if response and response.text:
+                    out = OutboundMessage(
+                        session_id=msg.session_id,
+                        text=response.text,
+                        channel="telegram",
+                        metadata={"chat_id": str(chat_id)},
+                    )
+                    await self.send(out)
             finally:
                 typing_task.cancel()
-
-            # Send response
-            out = OutboundMessage(
-                session_id=msg.session_id,
-                text=response.text,
-                channel="telegram",
-                metadata={"chat_id": str(chat_id)},
-            )
-            await self.send(out)
 
         except Exception as e:
             logger.exception("[Telegram] Message processing error: %s", e)
@@ -739,6 +759,18 @@ class TelegramChannel(Channel):
 
     def _check_auth(self, update) -> bool:
         """Check if the chat is authorized."""
+        if not update or not update.effective_chat:
+            return False
+            
+        incoming_id = str(update.effective_chat.id)
+        
         if not self.allowed_chat_id:
-            return True  # No restriction
-        return str(update.effective_chat.id) == str(self.allowed_chat_id)
+            logger.warning("[Telegram] Auth DENIED: No allowed_chat_id configured. Set TELEGRAM_CHAT_ID to allow access. Rejected chat_id=%s", incoming_id)
+            return False  # Fail-closed: deny all when no whitelist configured
+            
+        allowed = str(self.allowed_chat_id)
+        if incoming_id == allowed:
+            return True
+            
+        logger.warning("[Telegram] Auth REJECTED: incoming chat_id=%s, allowed=%s", incoming_id, allowed)
+        return False

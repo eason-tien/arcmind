@@ -94,7 +94,10 @@ class AnthropicProvider(BaseProvider):
 
     def __init__(self):
         import anthropic as _anthropic
-        self._client = _anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        self._client = _anthropic.Anthropic(
+            api_key=settings.anthropic_api_key,
+            timeout=90.0,  # 90s — 比默認 600s 合理得多
+        )
 
     def complete(self, model: str, messages: list[dict],
                  system: str | None, max_tokens: int) -> ModelResponse:
@@ -131,10 +134,22 @@ class OpenAICompatibleProvider(BaseProvider):
     def __init__(self, provider_name: str, api_key: str,
                  base_url: str | None = None):
         from openai import OpenAI
+        import httpx as _httpx
         self.name = provider_name
+        # 分離 connect / read timeout：
+        #   connect: 連線建立不應超過 10s（網路問題就快速失敗）
+        #   read: LLM 推理時間，雲端 API 90s，本地 120s
+        _is_local = provider_name in ("ollama", "ollama_remote")
+        _read_timeout = 120.0 if _is_local else 90.0
         self._client = OpenAI(
             api_key=api_key or "not-needed",
             base_url=base_url,
+            timeout=_httpx.Timeout(
+                connect=10.0,       # 快速偵測連線失敗
+                read=_read_timeout,  # LLM 推理等待
+                write=10.0,         # 上傳 prompt 不應太慢
+                pool=10.0,          # 連線池等待
+            ),
         )
 
     def complete(self, model: str, messages: list[dict],
@@ -439,9 +454,13 @@ class ModelRouter:
             return "mistral", model_str
 
         # 最後 fallback：用 default provider
+        # 為避免無窮迴圈（若 self._rules.default 也無法解析），傳遞防護標記
+        if model_str == self._rules.default:
+            # 已經是 default 本身，直接給一個安全的回退值
+            return "anthropic", model_str
+            
         default_provider, _ = self._parse_model(self._rules.default)
         return default_provider, model_str
-
     # ── 選擇模型 ──────────────────────────────────────────────────────────────
 
     def select_model(self, task_type: str = "general",

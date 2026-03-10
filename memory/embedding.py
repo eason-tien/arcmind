@@ -2,13 +2,19 @@
 """
 ArcMind — Embedding Adapter
 ==============================
-移植自 ARCHILLX v1.1 embedding_adapter.py。
 Plugin-style embedding for vector memory.
-Supports: Ollama (nomic-embed-text) / OpenAI / Null.
+Supports: Ollama (bge-m3 / nomic-embed-text) / OpenAI / Null.
+
+Performance:
+  - 請求級 LRU 快取：同一文字不重複 embed
+  - httpx timeout 從 30s 降到 15s（embed 不應太慢）
+  - embed_one() 快捷方法：避免 list 包裝開銷
 """
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from typing import Protocol, runtime_checkable
 
 logger = logging.getLogger("arcmind.embedding")
@@ -30,11 +36,52 @@ class NullEmbedding:
         return [[] for _ in texts]
 
 
+# ── Request-Level Embedding Cache ─────────────────────────────────────────────
+
+class _EmbeddingCache:
+    """
+    LRU 快取：避免同一請求鏈中重複 embed 相同文字。
+    每 60 秒自動清除過期條目，最多保留 256 條。
+    """
+    def __init__(self, max_size: int = 256, ttl: float = 60.0):
+        self._cache: dict[str, tuple[list[float], float]] = {}
+        self._lock = threading.Lock()
+        self._max_size = max_size
+        self._ttl = ttl
+
+    def get(self, text: str) -> list[float] | None:
+        with self._lock:
+            entry = self._cache.get(text)
+            if entry is None:
+                return None
+            vec, ts = entry
+            if (time.monotonic() - ts) > self._ttl:
+                del self._cache[text]
+                return None
+            return vec
+
+    def put(self, text: str, vec: list[float]):
+        with self._lock:
+            if len(self._cache) >= self._max_size:
+                # 清除最舊的 1/4
+                items = sorted(self._cache.items(), key=lambda x: x[1][1])
+                for k, _ in items[:self._max_size // 4]:
+                    del self._cache[k]
+            self._cache[text] = (vec, time.monotonic())
+
+    def clear(self):
+        with self._lock:
+            self._cache.clear()
+
+
+_embed_cache = _EmbeddingCache()
+
+
 class OllamaEmbedding:
-    """Local Ollama embedding via /api/embeddings."""
+    """Local Ollama embedding via /api/embeddings with request-level caching."""
 
     def __init__(self, base_url: str = "http://localhost:11434",
-                 model: str = "nomic-embed-text"):
+                 model: str = "bge-m3"):
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._dim: int | None = None
@@ -50,22 +97,69 @@ class OllamaEmbedding:
                 self._dim = 768
         return self._dim
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed_one(self, text: str) -> list[float]:
+        """
+        單一文字 embedding 快捷方法（帶快取）。
+        多數查詢場景只需 embed 一條意圖文字。
+        """
+        cached = _embed_cache.get(text)
+        if cached:
+            return cached
+
         import httpx
-        results: list[list[float]] = []
-        for text in texts:
+        try:
+            resp = httpx.post(
+                f"{self._base_url}/api/embeddings",
+                json={"model": self._model, "prompt": text},
+                timeout=15.0,  # embed 單條不應超過 15s
+            )
+            resp.raise_for_status()
+            vec = resp.json().get("embedding", [])
+            if vec:
+                _embed_cache.put(text, vec)
+            return vec
+        except Exception as e:
+            logger.warning("[OllamaEmbed] failed: %s", e)
+            return []
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """批量 embedding（帶快取：跳過已快取的，只 embed 新的）。"""
+        import httpx
+        results: list[list[float]] = [[] for _ in texts]
+        to_embed: list[tuple[int, str]] = []  # (index, text)
+
+        # 1. 從快取中取出已有的
+        for i, text in enumerate(texts):
+            cached = _embed_cache.get(text)
+            if cached:
+                results[i] = cached
+            else:
+                to_embed.append((i, text))
+
+        if not to_embed:
+            return results  # 全部命中快取
+
+        cache_hit = len(texts) - len(to_embed)
+        if cache_hit > 0:
+            logger.debug("[OllamaEmbed] Cache hit: %d/%d texts", cache_hit, len(texts))
+
+        # 2. 批量 embed 未快取的
+        for idx, text in to_embed:
             try:
                 resp = httpx.post(
                     f"{self._base_url}/api/embeddings",
                     json={"model": self._model, "prompt": text},
-                    timeout=30.0,
+                    timeout=15.0,
                 )
                 resp.raise_for_status()
                 vec = resp.json().get("embedding", [])
-                results.append(vec)
+                results[idx] = vec
+                if vec:
+                    _embed_cache.put(text, vec)
             except Exception as e:
                 logger.warning("[OllamaEmbed] failed: %s", e)
-                results.append([])
+                results[idx] = []
+
         return results
 
 
@@ -86,7 +180,7 @@ def get_adapter() -> EmbeddingAdapter:
             base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
             # Strip /v1 suffix for Ollama native API
             base = base.replace("/v1", "")
-            model = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+            model = os.getenv("EMBEDDING_MODEL", "bge-m3")
             _cached_adapter = OllamaEmbedding(base_url=base, model=model)
             logger.info("[Embedding] using Ollama: model=%s base=%s", model, base)
         else:

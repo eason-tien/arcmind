@@ -22,17 +22,57 @@ import json
 import logging
 import math
 import os
+import re
 import sqlite3
 import struct
 import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Generator
+from contextlib import contextmanager
 
 logger = logging.getLogger("arcmind.memory_store")
 
 MemoryType = Literal["episodic", "semantic", "procedural", "causal"]
+
+
+# ── Sensitive Data Scrubber ──────────────────────────────────────────────────
+
+_SENSITIVE_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # API keys: sk-xxx, nvapi-xxx
+    (re.compile(r"sk-[a-zA-Z0-9_\-]{20,}"), "[REDACTED_API_KEY]"),
+    (re.compile(r"nvapi-[a-zA-Z0-9_\-]{20,}"), "[REDACTED_NVIDIA_KEY]"),
+    # Telegram bot tokens: 1234567890:AAxxxx
+    (re.compile(r"\d{8,12}:[A-Za-z0-9_\-]{30,}"), "[REDACTED_BOT_TOKEN]"),
+    # JWT tokens
+    (re.compile(r"eyJ[a-zA-Z0-9_\-]{20,}\.[a-zA-Z0-9_\-]+\.[a-zA-Z0-9_\-]+"), "[REDACTED_JWT]"),
+    # Generic key=value patterns (api_key=xxx, password=xxx, token=xxx, secret=xxx)
+    (re.compile(r"(?i)(api[_\-]?key|token|secret|password|passwd|credentials)\s*[=:]\s*[\"']?([^\s\"']{10,})"),
+     r"\1=[REDACTED]"),
+]
+
+# Content patterns that are noise and should be skipped entirely
+_NOISE_PATTERNS: list[re.Pattern] = [
+    re.compile(r"worker_heartbeat", re.IGNORECASE),
+    re.compile(r"heartbeat.*check", re.IGNORECASE),
+    re.compile(r"健康檢查|health.?check", re.IGNORECASE),
+]
+
+
+def _scrub_sensitive(text: str) -> str:
+    """Remove API keys, tokens, passwords from text before storing to memory."""
+    for pattern, replacement in _SENSITIVE_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _is_noise(content: str) -> bool:
+    """Check if content is noise that should not be stored (heartbeat, health checks)."""
+    for pattern in _NOISE_PATTERNS:
+        if pattern.search(content):
+            return True
+    return False
 
 _DB_PATH = str(Path(__file__).parent.parent / "data" / "vector_memory.db")
 
@@ -65,32 +105,39 @@ def _bytes_to_vec(data: bytes) -> list[float]:
 # ── Ollama Embedding ─────────────────────────────────────────────────────────
 
 class _Embedder:
-    """Embed text via local Ollama."""
+    """
+    Embed text via shared OllamaEmbedding adapter（走統一快取）。
+    不再自建 httpx client，使用 embedding.py 的 singleton adapter + LRU cache。
+    """
 
     def __init__(self):
-        self._base_url = os.getenv(
-            "OLLAMA_BASE_URL", "http://localhost:11434"
-        ).replace("/v1", "").rstrip("/")
-        self._model = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+        self._adapter = None
+
+    def _get_adapter(self):
+        if self._adapter is None:
+            from memory.embedding import get_adapter
+            self._adapter = get_adapter()
+        return self._adapter
 
     def embed(self, text: str) -> list[float]:
-        """Get embedding for a single text. Returns empty list on failure."""
-        import httpx
+        """Get embedding for a single text (帶快取). Returns empty list on failure."""
+        adapter = self._get_adapter()
         try:
-            resp = httpx.post(
-                f"{self._base_url}/api/embeddings",
-                json={"model": self._model, "prompt": text[:2000]},
-                timeout=30.0,
-            )
-            resp.raise_for_status()
-            return resp.json().get("embedding", [])
+            if hasattr(adapter, 'embed_one'):
+                return adapter.embed_one(text[:2000])
+            vecs = adapter.embed([text[:2000]])
+            return vecs[0] if vecs else []
         except Exception as e:
             logger.warning("[Embedder] failed: %s", e)
             return []
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Embed multiple texts."""
-        return [self.embed(t) for t in texts]
+        """Embed multiple texts (帶批量快取)."""
+        adapter = self._get_adapter()
+        try:
+            return adapter.embed([t[:2000] for t in texts])
+        except Exception:
+            return [self.embed(t) for t in texts]
 
 
 # ── SQLite Schema ─────────────────────────────────────────────────────────────
@@ -138,10 +185,15 @@ class MemoryStore:
         logger.info("[MemoryStore] SQLite vector store ready at %s (%d entries)",
                      self._db_path, count)
 
-    def _conn(self) -> sqlite3.Connection:
+    @contextmanager
+    def _conn(self) -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(self._db_path, timeout=10)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn: # Handle commit/rollback automatically
+                yield conn
+        finally:
+            conn.close()
 
     def _count_all(self) -> int:
         with self._conn() as conn:
@@ -159,6 +211,14 @@ class MemoryStore:
         """Add a memory entry. Returns the ID or None if deduped."""
         if not content or not content.strip():
             return None
+
+        # Noise filter: skip heartbeat, health-check, etc.
+        if _is_noise(content):
+            logger.debug("[MemoryStore] skipped noise content: '%s...'", content[:40])
+            return None
+
+        # Scrub sensitive data (API keys, tokens, passwords)
+        content = _scrub_sensitive(content)
 
         # Embed
         embedding = self._embedder.embed(content)
@@ -193,6 +253,10 @@ class MemoryStore:
 
     def add_episodic(self, content: str, source: str = "conversation",
                      session_id: str | None = None, **kw) -> str | None:
+        # Skip error-heavy responses from polluting episodic memory
+        if content and any(p in content for p in ("❌ 執行失敗", "❌ 系統錯誤", "Traceback (most recent")):
+            logger.debug("[MemoryStore] skipped error content from episodic: '%s...'", content[:60])
+            return None
         meta = {"session_id": session_id} if session_id else {}
         return self.add(content, source=source, memory_type="episodic",
                         importance=kw.get("importance", 0.4),

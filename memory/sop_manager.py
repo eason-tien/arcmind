@@ -18,6 +18,8 @@ import struct
 import threading
 import time
 from pathlib import Path
+from typing import Generator
+from contextlib import contextmanager
 
 logger = logging.getLogger("arcmind.memory.sop")
 
@@ -70,9 +72,19 @@ class SOPManager:
         self._embedder = None  # lazy init
         self._init_db()
 
+    @contextmanager
+    def _conn(self) -> Generator[sqlite3.Connection, None, None]:
+        conn = sqlite3.connect(self._db_path, timeout=10)
+        conn.row_factory = sqlite3.Row
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
     def _init_db(self) -> None:
         Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self._db_path) as conn:
+        with self._conn() as conn:
             conn.executescript(_INIT_SQL)
 
     def _get_embedder(self):
@@ -90,7 +102,10 @@ class SOPManager:
         if not embedder:
             return []
         try:
-            vecs = embedder.embed([text[:512]])  # truncate for embedding
+            # 使用 embed_one 走快取（若同一意圖已被 CapSelector 或 MemSelector embed 過）
+            if hasattr(embedder, 'embed_one'):
+                return embedder.embed_one(text[:512])
+            vecs = embedder.embed([text[:512]])
             return vecs[0] if vecs else []
         except Exception as e:
             logger.warning("[SOPManager] Embed failed: %s", e)
@@ -112,7 +127,7 @@ class SOPManager:
             vec_bytes = _vec_to_bytes(vec) if vec else None
 
             with self._lock:
-                with sqlite3.connect(self._db_path) as conn:
+                with self._conn() as conn:
                     conn.execute(
                         "INSERT INTO sop_entries (prompt, sop_content, embedding, created_at, tags) "
                         "VALUES (?, ?, ?, ?, ?)",
@@ -148,7 +163,7 @@ class SOPManager:
 
         try:
             with self._lock:
-                with sqlite3.connect(self._db_path) as conn:
+                with self._conn() as conn:
                     rows = conn.execute(
                         "SELECT prompt, sop_content, embedding FROM sop_entries "
                         "WHERE embedding IS NOT NULL "
@@ -193,7 +208,7 @@ class SOPManager:
 
     def count(self) -> int:
         try:
-            with sqlite3.connect(self._db_path) as conn:
+            with self._conn() as conn:
                 return conn.execute("SELECT COUNT(*) FROM sop_entries").fetchone()[0]
         except Exception:
             return 0

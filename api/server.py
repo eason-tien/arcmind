@@ -6,18 +6,36 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
+import hmac
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from config.settings import settings
 from version import __version__ as _arcmind_version
 
 logger = logging.getLogger("arcmind.server")
 
+# ── Lifespan Guard ──────────────────────────────────────────────────────────
+# uvicorn 可能觸發多次 lifespan（reload mode、worker mode、或 app instance 衝突）。
+# 只允許第一次 lifespan 執行 startup/shutdown 邏輯，
+# 後續重複調用直接 yield 不做任何事，避免全局 singleton 被錯殺。
+_lifespan_active = False
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _lifespan_active
+
+    if _lifespan_active:
+        logger.warning("⚠️ Duplicate lifespan detected — skipping startup/shutdown to protect global singletons")
+        yield
+        return
+
+    _lifespan_active = True
+
     # ── Startup ──────────────────────────────────────────────────────────────
     logger.info("ArcMind starting up (port=%d)...", settings.arcmind_port)
 
@@ -93,8 +111,7 @@ async def lifespan(app: FastAPI):
 
     # ── EventBus 啟動 (Event-Driven 混合驅動) ──
     from runtime.event_bus import event_bus
-    from runtime.event_handlers import register_all_handlers
-    register_all_handlers()
+    import loop.event_handlers  # Ensure decorators run and handlers are registered
     await event_bus.start()
     logger.info("⚡ EventBus started (event-driven hybrid mode)")
 
@@ -104,8 +121,7 @@ async def lifespan(app: FastAPI):
                 settings.mgis_url, session_manager.active_count())
 
     # ── Channel Supervisor: 同步啟動所有通道（像 OpenClaw 一樣） ──
-    from channels.supervisor import ChannelSupervisor
-    supervisor = ChannelSupervisor()
+    from channels.supervisor import channel_supervisor as supervisor
 
     # Telegram Channel（從 settings/env 讀取 token）
     if settings.telegram_bot_token:
@@ -137,10 +153,16 @@ async def lifespan(app: FastAPI):
     app.state.supervisor_task = supervisor_task
     logger.info("🔗 Channel Supervisor started (%d channels)", len(supervisor._channels))
 
+    from gateway.server import _delivery_worker
+    delivery_task = asyncio.create_task(_delivery_worker(), name="delivery_worker")
+    app.state.delivery_task = delivery_task
+
     yield
 
     # ── Shutdown ─────────────────────────────────────────────────────────────
     logger.info("ArcMind shutting down...")
+
+    delivery_task.cancel()
 
     # 停止 EventBus
     await event_bus.stop()
@@ -160,6 +182,8 @@ async def lifespan(app: FastAPI):
     # Graceful session manager shutdown
     session_manager.stop()
     logger.info("✅ Session manager stopped")
+
+    _lifespan_active = False
 
 
 def create_app() -> FastAPI:
@@ -183,6 +207,38 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-Session-ID"],
     )
+
+    # ── API Key Authentication Middleware ────────────────────────────────
+    _PUBLIC_PATHS = {"/health", "/healthz", "/docs", "/openapi.json", "/redoc"}
+
+    class APIKeyAuthMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            path = request.url.path
+            # Allow public endpoints, static UI, and webhook endpoints without auth
+            if (path in _PUBLIC_PATHS
+                    or path.startswith("/ui")
+                    or path.startswith("/v1/webhooks")):
+                return await call_next(request)
+
+            # Check Authorization header or X-API-Key header
+            api_key = settings.arcmind_api_key
+            if api_key and api_key != "arcmind-dev-key":
+                auth_header = request.headers.get("Authorization", "")
+                x_api_key = request.headers.get("X-API-Key", "")
+                token = ""
+                if auth_header.startswith("Bearer "):
+                    token = auth_header[7:]
+                elif x_api_key:
+                    token = x_api_key
+
+                if not token or not hmac.compare_digest(token, api_key):
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Invalid or missing API key. Set Authorization: Bearer <key> or X-API-Key header."},
+                    )
+            return await call_next(request)
+
+    app.add_middleware(APIKeyAuthMiddleware)
 
     # ── Health (lightweight for watchdog) ──────────────────────────────────
     @app.get("/health")
@@ -275,8 +331,6 @@ def create_app() -> FastAPI:
         }
 
     from pydantic import BaseModel
-    import yaml
-    from config.settings import settings
 
     class DefaultModelReq(BaseModel):
         model: str

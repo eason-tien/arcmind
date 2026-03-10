@@ -21,6 +21,7 @@ import json
 import re
 import logging
 import subprocess
+import time
 import traceback
 from pathlib import Path
 from typing import Any, Callable
@@ -513,6 +514,41 @@ class ToolRegistry:
             handler=_tool_send_webhook,
         )
 
+        # ── Task Planner — 任務規劃與分工 ─────────────────────────────────
+        self.register(
+            name="plan_task",
+            description="""任務規劃工具。收到複雜需求時，用這個工具將需求拆解為多步驟執行計畫。
+每個步驟會指定負責的 Agent、具體指令和驗收標準。
+適合用於：多步驟任務、需要多個 Agent 協作的工作、複雜的開發/調研/分析需求。
+簡單的單一問答或閒聊不需要使用此工具。""",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "goal": {
+                        "type": "string",
+                        "description": "需要規劃的目標或需求描述",
+                    },
+                },
+                "required": ["goal"],
+            },
+            handler=_tool_plan_task,
+        )
+        self.register(
+            name="execute_plan",
+            description="執行已規劃好的任務計畫。需要提供 plan_id（由 plan_task 工具回傳）。會按步驟順序委派給子 Agent 執行，每步結果傳遞給下一步。",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "plan_id": {
+                        "type": "string",
+                        "description": "由 plan_task 回傳的 plan_id",
+                    },
+                },
+                "required": ["plan_id"],
+            },
+            handler=_tool_execute_plan,
+        )
+
         # ── Harness — 長時間任務編排 ────────────────────────────────────
         try:
             from runtime.harness_tool import HARNESS_TOOL_SCHEMAS
@@ -532,6 +568,7 @@ class ToolRegistry:
 def _tool_web_search(query: str, max_results: int = 5, **kwargs) -> str:
     """Web search using ddgs."""
     try:
+        max_results = int(max_results)
         from ddgs import DDGS
         results = DDGS().text(query, max_results=max_results)
         if not results:
@@ -1006,6 +1043,36 @@ def _tool_send_webhook(
         return f"❌ Webhook failed: {e}"
 
 
+def _tool_plan_task(goal: str, **kwargs) -> str:
+    """Plan a complex task by decomposing it into steps."""
+    try:
+        from runtime.task_planner import task_planner
+        plan = task_planner.plan(goal)
+        return (
+            f"✅ 計畫已建立\n\n"
+            f"{plan.summary()}\n\n"
+            f"📌 Plan ID: `{plan.plan_id}`\n"
+            f"👉 確認後請呼叫 execute_plan(plan_id=\"{plan.plan_id}\") 開始執行"
+        )
+    except Exception as e:
+        return f"❌ 規劃失敗: {e}"
+
+
+def _tool_execute_plan(plan_id: str, **kwargs) -> str:
+    """Execute a previously planned task."""
+    try:
+        from runtime.task_planner import task_planner
+        result = task_planner.execute(plan_id)
+        if result["success"]:
+            # Auto-verify
+            verification = task_planner.verify(plan_id)
+            return f"✅ 計畫執行完成\n\n{result['summary']}\n\n## CEO 驗收\n{verification}"
+        else:
+            return f"⚠️ 計畫部分失敗\n\n{result['summary']}"
+    except Exception as e:
+        return f"❌ 執行失敗: {e}"
+
+
 # ── Agentic Loop ─────────────────────────────────────────────────────────────
 
 def agentic_complete(
@@ -1017,6 +1084,8 @@ def agentic_complete(
     budget: str = "medium",
     max_tokens: int | None = None,
     tools_enabled: bool = True,
+    require_tool_usage: bool = False,
+    tool_filter: list[str] | None = None,
 ) -> dict:
     """
     Agentic completion with state-driven tool execution loop.
@@ -1035,7 +1104,26 @@ def agentic_complete(
     from memory.working_memory import flush_step_logs, inject_checkpoint
 
     registry = tool_registry  # singleton
-    tool_schemas = registry.get_schemas() if tools_enabled else []
+    # ── P1-4: 語義工具篩選 ──
+    if tools_enabled:
+        all_schemas = registry.get_schemas()
+        if tool_filter:
+            # 只暴露指定的工具 schema
+            tool_schemas = [s for s in all_schemas if s["name"] in tool_filter]
+            # 安全閥：如果過濾後太少，保留全部
+            if len(tool_schemas) < 3:
+                tool_schemas = all_schemas
+            else:
+                logger.info("[AgenticLoop] Tool filter active: %d/%d tools exposed",
+                            len(tool_schemas), len(all_schemas))
+        else:
+            # 無指定 tool_filter → 使用全部工具（語義篩選已由 main_loop 處理，
+            # 避免此處重複呼叫 CapabilitySelector 增加 2-5s 延遲）
+            tool_schemas = all_schemas
+    else:
+        tool_schemas = []
+    # 保留完整工具列表用於動態追加（安全閥）
+    _all_tool_names = {s["name"] for s in registry.get_schemas()} if tools_enabled else set()
     tool_calls_log: list[dict] = []
     total_tokens = 0
 
@@ -1050,7 +1138,14 @@ def agentic_complete(
 
     # Determine which call format to use
     is_anthropic = provider_name == "anthropic"
-    is_openai_compat = provider_name in ("openai", "ollama", "groq", "mistral", "custom", "nvidia")
+    # All providers except anthropic and google use OpenAI-compatible format
+    _OPENAI_COMPAT_PROVIDERS = {
+        "openai", "ollama", "ollama_remote", "groq", "mistral", "custom", "nvidia",
+        "deepseek", "xai", "cohere", "together", "fireworks", "perplexity",
+        "openrouter", "cerebras", "hyperbolic", "siliconflow", "minimax",
+        "moonshot", "zhipu", "yi", "baichuan", "stepfun",
+    }
+    is_openai_compat = provider_name in _OPENAI_COMPAT_PROVIDERS
 
     # Build initial messages for OpenAI format (system goes in messages)
     if is_openai_compat:
@@ -1424,7 +1519,14 @@ def _openai_call_with_tools(
         kwargs["tools"] = tools
         kwargs["tool_choice"] = "auto"
 
+    _t0 = time.time()
     resp = client.chat.completions.create(**kwargs)
+    _elapsed = time.time() - _t0
+    if _elapsed > 15:
+        logger.warning("[AgenticLoop] ⏱️ LLM API slow: %.1fs (model=%s, msgs=%d)",
+                       _elapsed, model_id, len(messages))
+    else:
+        logger.info("[AgenticLoop] ⏱️ LLM API: %.1fs (model=%s)", _elapsed, model_id)
     choice = resp.choices[0]
     message = choice.message
 
@@ -1495,7 +1597,14 @@ def _anthropic_call_with_tools(
     if tool_schemas:
         kwargs["tools"] = tool_schemas
 
+    _t0 = time.time()
     resp = client.messages.create(**kwargs)
+    _elapsed = time.time() - _t0
+    if _elapsed > 15:
+        logger.warning("[AgenticLoop] ⏱️ Anthropic API slow: %.1fs (model=%s, msgs=%d)",
+                       _elapsed, model_id, len(messages))
+    else:
+        logger.info("[AgenticLoop] ⏱️ Anthropic API: %.1fs (model=%s)", _elapsed, model_id)
 
     text_parts = []
     content_blocks = []

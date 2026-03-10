@@ -44,7 +44,11 @@ class ChannelSupervisor:
         self._health_interval = 300  # 5 minutes
 
     def register(self, channel: Channel) -> None:
-        """Register a channel for supervision."""
+        """Register a channel for supervision (skip if same name already registered)."""
+        # 防止 duplicate lifespan 重複註冊同一通道
+        if any(c.name == channel.name for c in self._channels):
+            logger.warning("[Supervisor] channel %s already registered, skipping duplicate", channel.name)
+            return
         self._channels.append(channel)
         logger.info("[Supervisor] registered channel: %s (enabled=%s)",
                      channel.name, channel.enabled)

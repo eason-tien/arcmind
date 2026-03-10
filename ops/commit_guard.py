@@ -302,7 +302,13 @@ def main():
     else:
         msg_file = Path(sys.argv[1])
         message = msg_file.read_text().strip()
+        # 從 commit message 的 Agent-By footer 提取 agent 身份
         agent = "unknown"
+        for line in message.splitlines():
+            m = re.match(r"Agent-By:\s*(\S+)", line)
+            if m:
+                agent = m.group(1)
+                break
     
     result = full_validate(message, agent)
     
