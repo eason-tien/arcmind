@@ -39,10 +39,10 @@ logger = logging.getLogger("arcmind.delegator")
 _CAPABILITY_KEYWORDS: dict[str, list[str]] = {
     # coding
     "coding": [
-        "代码", "代碼", "码", "code", "coding", "程序", "程式",
+        "代码", "代碼", "code", "coding", "程序", "程式",
         "function", "函数", "函數", "class", "算法", "演算法",
-        "script", "脚本", "腳本", "api", "sdk", "寫", "写",
-        "implement", "實作", "实现",
+        "script", "脚本", "腳本", "api", "sdk",
+        "implement", "實作", "实现", "寫程式", "写代码", "寫代碼",
     ],
     "debugging": [
         "debug", "调试", "調試", "bug", "error", "错误", "錯誤",
@@ -57,7 +57,8 @@ _CAPABILITY_KEYWORDS: dict[str, list[str]] = {
         "新闻", "新聞", "news", "最新", "latest",
     ],
     "research": [
-        "研究", "调研", "調研", "research", "了解", "什么是", "什麼是",
+        "研究", "调研", "調研", "research", "什么是", "什麼是",
+        "深入了解", "想了解",
     ],
     # analysis
     "analysis": [
@@ -74,7 +75,7 @@ _CAPABILITY_KEYWORDS: dict[str, list[str]] = {
     ],
     # devops
     "deployment": [
-        "部署", "deploy", "ci/cd", "pipeline", "docker",
+        "部署", "deploy", "ci/cd", "docker",
         "kubernetes", "k8s", "发布", "發布", "release",
     ],
     "monitoring": [
@@ -86,8 +87,8 @@ _CAPABILITY_KEYWORDS: dict[str, list[str]] = {
         "用户故事", "用戶故事", "user story",
     ],
     "planning": [
-        "规划", "規劃", "plan", "planning", "路线图", "路線圖",
-        "roadmap", "sprint", "迭代", "排期",
+        "规划", "規劃", "planning", "路线图", "路線圖",
+        "roadmap", "sprint", "迭代", "排期", "任務規劃", "任务规划",
     ],
     # windows
     "windows": [
@@ -120,7 +121,7 @@ _CAPABILITY_KEYWORDS: dict[str, list[str]] = {
     # copywriting (template: copywriter)
     "copywriting": [
         "文案", "copy", "copywriting", "seo", "行销", "行銷",
-        "marketing", "内容", "內容", "content", "blog",
+        "marketing", "blog", "寫文案", "写文案",
     ],
     # finance (template: financial)
     "finance": [
@@ -145,6 +146,24 @@ _MULTI_AGENT_SIGNALS: list[str] = [
     "then", "and then", "after that", "followed by",
     "先.*再", "先.*後", "first.*then",
 ]
+
+# ── Casual chat bypass ─────────────────────────────────────────────────────
+# Short greetings, acknowledgments, and small-talk bypass delegation entirely.
+_CASUAL_PATTERNS: list[str] = [
+    # Greetings
+    r"^(你好|嗨|hi|hello|hey|哈囉|哈喽|嘿|早安|午安|晚安|早上好|下午好|晚上好|good\s*(morning|afternoon|evening))[\s!！。.？?，,~～]*$",
+    # Thanks
+    r"^(謝謝|谢谢|感謝|感谢|thanks?|thank\s*you|thx|3q|tks|多謝|多谢)[\s!！。.？?，,~～]*$",
+    # Bye
+    r"^(bye|再見|再见|掰掰|拜拜|88|886|see\s*you|晚安|good\s*night)[\s!！。.？?，,~～]*$",
+    # Acknowledgments
+    r"^(ok|okay|好的|好|是|對|对|嗯|了解|知道了|收到|okok|明白|好吧|行|可以|沒問題|没问题)[\s!！。.？?，,~～]*$",
+    # Identity questions
+    r"^(你是誰|你是谁|who\s*are\s*you|你叫什[麼么]|what.*your\s*name)[\s!！。.？?，,~～]*$",
+    # Simple affirmations/negations
+    r"^(是的|不是|不要|不用|不了|算了|沒事|没事|無所謂|随便|隨便)[\s!！。.？?，,~～]*$",
+]
+_CASUAL_MAX_LEN = 12  # Commands ≤ this length with no domain keywords → casual
 
 
 @dataclass
@@ -181,6 +200,23 @@ class Delegator:
     Routes tasks to the best sub-agent(s) based on intent matching.
     """
 
+    @staticmethod
+    def _is_casual_chat(command: str) -> bool:
+        """Detect casual chat / greetings that should NOT trigger delegation."""
+        cmd = command.strip()
+        cmd_lower = cmd.lower()
+        # Pattern match — common greetings, thanks, bye, etc.
+        for pattern in _CASUAL_PATTERNS:
+            if re.match(pattern, cmd_lower):
+                return True
+        # Short command heuristic: if very short and no domain keywords, treat as casual
+        if len(cmd) <= _CASUAL_MAX_LEN:
+            for keywords in _CAPABILITY_KEYWORDS.values():
+                if any(kw in cmd_lower for kw in keywords if len(kw) >= 3):
+                    return False  # Has a meaningful domain keyword → not casual
+            return True  # Short + no domain keywords → casual
+        return False
+
     def _is_onboarding(self) -> bool:
         """Check if onboarding is still in progress."""
         try:
@@ -197,26 +233,25 @@ class Delegator:
         """
         Score all capabilities against the command.
         P1-5: 優先使用語義匹配（Capability Selector），關鍵字作為 fallback。
-        Returns sorted (cap, score) pairs.
+        Returns sorted (cap, confidence) pairs, confidence already normalized to 0-1.
         """
         # ── 語義路由（P1-5）──
-        # min_score 0.45: 過濾掉低相關性的「噪音匹配」（簡單問候等）
+        # min_score 0.50: 過濾掉低相關性的「噪音匹配」（簡單問候、閒聊等）
         try:
             from runtime.capability_selector import capability_selector
-            results = capability_selector.select_agents(command, top_k=5, min_score=0.45)
+            results = capability_selector.select_agents(command, top_k=5, min_score=0.50)
             if results:
                 scores = []
                 seen_caps = set()
                 for r in results:
                     cap = r.entry.metadata.get("capability", "general")
                     if cap not in seen_caps:
-                        # 正規化分數到 0-5 範圍（與原始關鍵字計分相容）
-                        normalized_score = r.score * 5.0
-                        scores.append((cap, normalized_score))
+                        # Cosine similarity 已經是 0-1 範圍，直接作為 confidence
+                        scores.append((cap, r.score))
                         seen_caps.add(cap)
                 if scores:
                     logger.info("[Delegator] Semantic routing: %s",
-                                ", ".join(f"{c}={s:.2f}" for c, s in scores[:3]))
+                                ", ".join(f"{c}={s:.3f}" for c, s in scores[:3]))
                     return scores
         except Exception as e:
             logger.debug("[Delegator] Semantic routing failed, using keyword fallback: %s", e)
@@ -225,9 +260,11 @@ class Delegator:
         cmd_lower = command.lower()
         scores = []
         for capability, keywords in _CAPABILITY_KEYWORDS.items():
-            score = sum(1 for kw in keywords if kw in cmd_lower)
-            if score > 0:
-                scores.append((capability, float(score)))
+            count = sum(1 for kw in keywords if kw in cmd_lower)
+            if count > 0:
+                # Normalize: 1 match=0.33, 2 matches=0.67, 3+=1.0
+                confidence = min(count / 3.0, 1.0)
+                scores.append((capability, confidence))
         scores.sort(key=lambda x: x[1], reverse=True)
         return scores
 
@@ -284,6 +321,11 @@ class Delegator:
         if self._is_onboarding():
             return None
 
+        # ── 閒聊 bypass：短問候/確認/小聊不委派 ──
+        if self._is_casual_chat(command):
+            logger.debug("[Delegator] Casual chat detected, CEO handles: '%s'", command[:30])
+            return None
+
         scores = self._score_capabilities(command)
         if not scores:
             return None
@@ -295,18 +337,21 @@ class Delegator:
             logger.info("[Delegator] No agent for '%s', falling back to CEO", best_cap)
             return None
 
-        match.confidence = min(best_score / 3.0, 1.0)  # Normalize to 0-1
+        # Confidence 已由 _score_capabilities 正規化到 0-1：
+        # - 語義路由: cosine similarity（直接使用）
+        # - 關鍵字路由: min(match_count / 3.0, 1.0)
+        match.confidence = best_score
 
-        # P1-5: 低信心度的匹配不委派 — 讓 CEO 直接處理
-        # 對於語義路由: best_score 是 raw_sim * 5.0，所以 0.50*5=2.5 / 3.0 = 0.83
-        # 閾值 0.60 = raw_sim 至少 0.36（合理的下限）
-        if match.confidence < 0.60:
-            logger.info("[Delegator] Low confidence %.2f for cap='%s', CEO handles directly",
+        # 低信心度的匹配不委派 — 讓 CEO 直接處理
+        # 語義: cosine_sim < 0.50 不委派（nomic-embed-text 的合理閾值）
+        # 關鍵字: 需要 2+ 個關鍵字匹配（2/3=0.67 > 0.50）
+        if match.confidence < 0.50:
+            logger.info("[Delegator] Low confidence %.3f for cap='%s', CEO handles directly",
                         match.confidence, best_cap)
             return None
 
-        logger.info("[Delegator] MATCH: '%s' → agent=%s cap=%s score=%.2f conf=%.2f",
-                    command[:40], match.agent_id, best_cap, best_score, match.confidence)
+        logger.info("[Delegator] MATCH: '%s' → agent=%s cap=%s conf=%.3f",
+                    command[:40], match.agent_id, best_cap, match.confidence)
         return match
 
     # ── Multi-agent routing ──────────────────────────────────────────────────
@@ -321,6 +366,10 @@ class Delegator:
           → Step 2: code agent (coding)
         """
         if self._is_onboarding():
+            return None
+
+        # 閒聊 bypass
+        if self._is_casual_chat(command):
             return None
 
         scores = self._score_capabilities(command)
@@ -347,7 +396,7 @@ class Delegator:
                 continue
 
             if match and match.agent_id not in seen_agents:
-                match.confidence = min(score / 3.0, 1.0)
+                match.confidence = score  # Already normalized 0-1
                 steps.append(match)
                 seen_agents.add(match.agent_id)
             if len(steps) >= 3:  # Max 3 agents per plan
@@ -414,11 +463,32 @@ class Delegator:
         try:
             from runtime.tool_loop import agentic_complete
 
+            # ── Tool Filter: 限制子 Agent 只能使用其 allowed_tools ──
+            # 同時移除委派工具（delegate_task, delegate_pipeline）防止遞歸委派
+            _delegation_tools = {"delegate_task", "delegate_pipeline", "delegate_multi"}
+            tool_filter = None
+            agent_info = agent_registry.get(match.agent_id)
+            if agent_info and agent_info.allowed_tools:
+                if "__all__" not in agent_info.allowed_tools:
+                    tool_filter = [t for t in agent_info.allowed_tools
+                                   if t not in _delegation_tools]
+                else:
+                    # __all__ but still exclude delegation tools to prevent loops
+                    tool_filter = None  # 使用全部工具，但下面單獨排除
+            # 即使是 __all__，也排除委派工具（子 Agent 不應再委派）
+            if tool_filter is None and match.agent_id != "main":
+                # 不傳 tool_filter → agentic_complete 用全部工具
+                # 但我們明確排除委派工具
+                from runtime.tool_loop import tool_registry as _tr
+                all_tool_names = [s["name"] for s in _tr.get_schemas()]
+                tool_filter = [t for t in all_tool_names if t not in _delegation_tools]
+
             result = agentic_complete(
                 prompt=full_command,
                 system=full_system,
                 model=match.model,
                 task_type=match.capability,
+                tool_filter=tool_filter,
             )
 
             elapsed = time.time() - t0
@@ -608,20 +678,21 @@ class Delegator:
                     # 檢查 capability 關鍵字是否出現在 command 中
                     if cap_lower in _CAPABILITY_KEYWORDS:
                         keywords = _CAPABILITY_KEYWORDS[cap_lower]
-                        score = sum(1 for kw in keywords if kw in cmd_lower)
-                        if score > 0:
+                        count = sum(1 for kw in keywords if kw in cmd_lower)
+                        if count > 0:
+                            confidence = min(count / 3.0, 1.0)
                             match = DelegationMatch(
                                 agent_id=f"peer:{peer.instance_id}:{cap}",
                                 agent_name=f"[{peer.instance_id}] {cap}",
                                 model="remote",
                                 system_prompt="",
                                 capability=cap,
-                                confidence=min(score / 3.0, 1.0),
+                                confidence=confidence,
                                 remote=True,
                                 peer_url=peer.url,
                                 peer_instance_id=peer.instance_id,
                             )
-                            if match.confidence >= 0.60:
+                            if match.confidence >= 0.50:
                                 logger.info("[Delegator] FEDERATED MATCH: '%s' → peer=%s cap=%s conf=%.2f",
                                             command[:40], peer.instance_id, cap, match.confidence)
                                 return match
