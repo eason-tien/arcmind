@@ -32,6 +32,7 @@ from runtime.skill_manager import skill_manager
 from runtime.lifecycle import lifecycle
 from loop.goal_tracker import goal_tracker
 from loop.feedback import feedback
+from memory.working_memory import working_memory
 
 logger = logging.getLogger("arcmind.main_loop")
 
@@ -150,6 +151,18 @@ class MainLoop:
                 "task_type": inp.task_type,
             })
 
+            # ── Working Memory: 讀取 session 的工作記憶（跨請求連續性）──
+            wm_key = str(inp.session_id) if inp.session_id else str(task_id)
+            wm_context = ""
+            try:
+                wm_context = working_memory.get_context(wm_key)
+                if wm_context:
+                    inp.context["working_memory"] = wm_context
+                    logger.info("[OBSERVE] Working memory loaded (%d chars) for session=%s",
+                                len(wm_context), wm_key[:16])
+            except Exception as e:
+                logger.debug("[OBSERVE] Working memory read failed: %s", e)
+
             # ── 2. ORIENT ────────────────────────────────────────────────────
             logger.info("[ORIENT] Querying local 4-layer memory...")
             try:
@@ -160,7 +173,7 @@ class MainLoop:
                     top_k=5,
                 )
                 # Recent conversation history (episodic) — so agent remembers past turns
-                recent_conv = _mem.get_recent(limit=10, memory_type="episodic")
+                recent_conv = _mem.get_recent(limit=20, memory_type="episodic")
                 # Merge: recent conversation first, then topic hits (dedup by id)
                 seen_ids = set()
                 merged = []
@@ -281,8 +294,8 @@ class MainLoop:
                          "reason": gov_result.reason,
                          "risk_score": gov_result.risk_score}
             except Exception as e:
-                logger.warning("[DECIDE] Governor failed (auto-approved): %s", e)
-                audit = {"approved": True}
+                logger.error("[DECIDE] Governor failed (fail-closed — action BLOCKED): %s", e)
+                audit = {"approved": False, "reason": f"Governor error: {e}", "risk_score": 1.0}
 
             if not audit.get("approved", True):
                 reason = audit.get("reason", "Governor blocked")
@@ -319,7 +332,11 @@ class MainLoop:
                 })
             else:
                 # 嘗試多 Agent 協作路由
-                multi_agent_result = self._try_multi_agent(inp, task_id)
+                # 若已經是指定角色的子任務，跳過二次委派
+                if inp.context.get('sub_agent_role'):
+                    multi_agent_result = None
+                else:
+                    multi_agent_result = self._try_multi_agent(inp, task_id)
                 if multi_agent_result:
                     skill_result = multi_agent_result
                     skill_name = "_multi_agent"
@@ -340,6 +357,18 @@ class MainLoop:
 
             skill_used = skill_name
             lifecycle.tasks.start_verifying(task_id)
+
+            # ── Working Memory: 寫入本次執行結果 ──
+            try:
+                result_summary = str(skill_result.get("output", ""))[:300]
+                tool_calls = skill_result.get("tool_calls", [])
+                if tool_calls:
+                    tool_names = [tc.get("tool", "?") for tc in tool_calls[:5]]
+                    working_memory.add(wm_key, f"使用工具: {', '.join(tool_names)}", kind="action")
+                if result_summary:
+                    working_memory.add(wm_key, result_summary, kind="result")
+            except Exception as e:
+                logger.debug("[ACT] Working memory write failed: %s", e)
 
             # ── 5. LEARN ─────────────────────────────────────────────────────
             output = skill_result.get("output")
@@ -396,6 +425,43 @@ class MainLoop:
                 except Exception as _mem_err:
                     logger.debug("[LEARN] Memory write failed (non-fatal): %s", _mem_err)
 
+                # ── Working Memory: flush 結論到 semantic ──
+                try:
+                    from memory.memory_store import memory_store as _mem
+                    working_memory.flush(wm_key, _mem, user_command=inp.command)
+                except Exception as _wm_err:
+                    logger.debug("[LEARN] Working memory flush failed: %s", _wm_err)
+
+                # ── MGIS 閉環: 寫回記憶 + 因果日誌 ──
+                try:
+                    if mgis.is_online():
+                        # 寫入 MGIS 長期記憶
+                        mgis.memory_add(
+                            content=f"任務: {inp.command[:150]}\n結果: {output_summary}",
+                            tags=["arcmind", "task_success", skill_name or "direct"],
+                            metadata={"task_id": task_id, "tokens": tokens_used,
+                                      "session_id": inp.session_id},
+                        )
+                        # 因果日誌
+                        mgis.causal_log(
+                            cause=f"用戶指令: {inp.command[:100]}",
+                            effect=f"成功完成 (skill={skill_name}, tokens={tokens_used})",
+                            metadata={"task_id": task_id},
+                        )
+                except Exception:
+                    pass  # MGIS 離線不影響主流程
+
+                # ── SOP 自動儲存（P2-3 提前實施）──
+                try:
+                    from memory.sop_manager import sop_manager as _sop
+                    if output and len(str(output)) > 100 and tokens_used > 500:
+                        _sop.save_successful_sop(
+                            task_prompt=inp.command[:500],
+                            sop_content=str(output)[:2000],
+                        )
+                except Exception:
+                    pass
+
                 # ── Event: agent_complete ──
                 self._emit_event("agent_complete", inp.source, {
                     "task_id": task_id, "skill_used": skill_name,
@@ -434,6 +500,17 @@ class MainLoop:
                         effect=f"失敗: {str(error)[:200]}",
                         confidence=0.7,
                     )
+                except Exception:
+                    pass
+
+                # ── MGIS 閉環: 失敗因果日誌 ──
+                try:
+                    if mgis.is_online():
+                        mgis.causal_log(
+                            cause=f"用戶指令: {inp.command[:100]} (skill={skill_name})",
+                            effect=f"失敗: {str(error)[:200]}",
+                            metadata={"task_id": task_id, "severity": "error"},
+                        )
                 except Exception:
                     pass
 
@@ -509,19 +586,9 @@ class MainLoop:
 
     # ── 內部輔助 ──────────────────────────────────────────────────────────────
 
-    def _pick_skill(self, command: str, task_type: str) -> str:
-        """
-        選擇執行方式。
-
-        NOTE: 之前的 keyword-based skill routing 已停用。
-        原因：skills (web_search.py, code_exec.py) 期待結構化參數如
-        {"query": "..."} 或 {"code": "..."}，但 keyword matcher 只傳入
-        raw command text，導致 "query is required" / "code is required" 錯誤。
-
-        現在統一用 _model_direct → _model_fallback → Agentic Tool Loop，
-        讓 LLM 自己決定呼叫哪些工具並正確傳遞參數。
-        這才是 OpenClaw 級別的執行力。
-        """
+    @staticmethod
+    def _pick_skill(_command: str, _task_type: str) -> str:
+        """統一走 _model_direct → Agentic Tool Loop，由 LLM 決定工具調用。"""
         return "_model_direct"
 
     def _try_multi_agent(self, inp: LoopInput, task_id: int) -> dict | None:
@@ -541,8 +608,14 @@ class MainLoop:
 
             result = delegator.execute_plan(plan, inp.command)
 
+            # If multi-agent pipeline failed, return None so fallback chain continues
+            if not result.get("success"):
+                logger.warning("[ACT] Multi-agent plan failed, falling back to single: %s",
+                               str(result.get("output", ""))[:100])
+                return None
+
             return {
-                "success": result.get("success", False),
+                "success": True,
                 "output": result.get("output", ""),
                 "tokens": result.get("total_tokens", 0),
                 "tool_calls": [],
@@ -560,79 +633,124 @@ class MainLoop:
         """
         當沒有適合 Skill 時，使用 Agentic Tool Loop 回應。
         先檢查是否應該委派給子 Agent，否則 MAIN 自己處理。
+
+        P1 重構: 使用 Context Builder + Capability Selector + Memory Selector 構建最小充分上下文。
+        MGIS 閉環: 若 MGIS 在線，整合治理/記憶/規劃上下文。
         """
-        # ── 委派檢查：MAIN → Sub-Agent ──
-        try:
-            from runtime.delegator import delegator
+        # ── 委派檢查：MAIN → Sub-Agent（P1-5 語義路由）──
+        # Depth guard: 防止無限遞歸委派（max depth=2）
+        _DELEGATION_MAX_DEPTH = 2
+        delegation_depth = inp.context.get("_delegation_depth", 0)
 
-            match = delegator.route(inp.command)
-            if match:
-                logger.info("[MainLoop] 🔀 Delegating to %s (%s)",
-                            match.agent_name, match.capability)
-                result = delegator.execute(match, inp.command)
-                return {
-                    "success": result.get("success", False),
-                    "output": result.get("output", ""),
-                    "tokens": result.get("tokens", 0),
-                    "tool_calls": result.get("tool_calls", []),
-                    "delegated_to": match.agent_id,
-                }
-        except ImportError:
-            pass
+        if not inp.context.get("sub_agent_role") and delegation_depth < _DELEGATION_MAX_DEPTH:
+            try:
+                from runtime.delegator import delegator
+
+                match = delegator.route(inp.command)
+                if match:
+                    logger.info("[MainLoop] 🔀 Delegating to %s (%s, conf=%.3f, depth=%d)",
+                                match.agent_name, match.capability, match.confidence,
+                                delegation_depth)
+                    result = delegator.execute(match, inp.command)
+                    # Only return delegation result if it actually succeeded
+                    if result.get("success"):
+                        return {
+                            "success": True,
+                            "output": result.get("output", ""),
+                            "tokens": result.get("tokens", 0),
+                            "tool_calls": result.get("tool_calls", []),
+                            "delegated_to": match.agent_id,
+                        }
+                    else:
+                        # ── 失敗重路由：嘗試次佳 Agent ──
+                        logger.warning("[MainLoop] Delegation to %s failed (%s), trying re-route...",
+                                       match.agent_id, result.get("error", "unknown"))
+                        try:
+                            scores = delegator._score_capabilities(inp.command)
+                            tried = {match.agent_id}
+                            for cap, score in scores:
+                                alt_match = delegator._find_best_agent(cap)
+                                if alt_match and alt_match.agent_id not in tried and score >= 0.50:
+                                    alt_match.confidence = score
+                                    logger.info("[MainLoop] 🔁 Re-routing to %s (%s, conf=%.3f)",
+                                                alt_match.agent_name, alt_match.capability, alt_match.confidence)
+                                    alt_result = delegator.execute(alt_match, inp.command)
+                                    if alt_result.get("success"):
+                                        return {
+                                            "success": True,
+                                            "output": alt_result.get("output", ""),
+                                            "tokens": alt_result.get("tokens", 0),
+                                            "tool_calls": alt_result.get("tool_calls", []),
+                                            "delegated_to": alt_match.agent_id,
+                                        }
+                                    tried.add(alt_match.agent_id)
+                        except Exception as re_err:
+                            logger.debug("[MainLoop] Re-route failed: %s", re_err)
+                        logger.warning("[MainLoop] All delegation attempts failed, CEO handling directly")
+            except ImportError:
+                pass
+            except Exception as e:
+                logger.warning("[MainLoop] Delegation failed, MAIN handling: %s", e)
+        elif delegation_depth >= _DELEGATION_MAX_DEPTH:
+            logger.warning("[MainLoop] Delegation depth limit reached (%d/%d), CEO handling directly",
+                           delegation_depth, _DELEGATION_MAX_DEPTH)
+
+        # ── P1-3: 使用 Context Builder 構建最小充分上下文 ──
+        try:
+            from runtime.context_builder import context_builder
+
+            system = context_builder.build(
+                intent=inp.command,
+                session_id=inp.session_id,
+                task_id=None,
+                agent_type=inp.context.get("sub_agent_role") or inp.context.get("agent_type", "main"),
+                conversation_history=inp.context.get("conversation_history"),
+                extra_context=inp.context,
+            )
         except Exception as e:
-            logger.warning("[MainLoop] Delegation failed, MAIN handling: %s", e)
-        # 使用 PersonaInjector 構建分層 system prompt
-        try:
-            from persona.injector import persona_injector
+            logger.warning("[MainLoop] Context builder failed, using legacy: %s", e)
+            # ── Legacy fallback: 原始 PersonaInjector ──
+            try:
+                from persona.injector import persona_injector
 
-            memory_ctx = ""
-            if memory_hits:
-                memory_ctx = "\n".join(
-                    f"- {h.get('content', '')[:100]}" for h in memory_hits
+                memory_ctx = ""
+                if memory_hits:
+                    memory_ctx = "\n".join(
+                        f"- {h.get('content', '')[:300]}" for h in memory_hits
+                    )
+
+                context_summary = ""
+                if memory_ctx:
+                    context_summary = f"## 相關記憶\n{memory_ctx}"
+                wm_ctx = inp.context.get("working_memory", "")
+                if wm_ctx:
+                    context_summary += f"\n\n## 工作記憶（上下文連續性）\n{wm_ctx}"
+                env_topo = inp.context.get("env_topology", "")
+                if env_topo:
+                    context_summary += f"\n\n{env_topo}"
+
+                system = persona_injector.build_system_prompt(
+                    context_summary=context_summary,
+                    agent_type=inp.context.get("sub_agent_role") or inp.context.get("agent_type", "main"),
+                )
+            except ImportError:
+                system = (
+                    "你是 ArcMind，一個自主智能體。"
+                    "你可以使用工具來搜尋、執行命令、讀寫檔案。"
+                    "根據使用者指令，選擇最適合的工具來完成任務。"
                 )
 
-            context_summary = ""
-            if memory_ctx:
-                context_summary = f"## 相關記憶\n{memory_ctx}"
-            # 環境認知注入
-            env_topo = inp.context.get("env_topology", "")
-            if env_topo:
-                context_summary += f"\n\n{env_topo}"
-            if inp.context:
-                ctx_for_summary = {k: v for k, v in inp.context.items() if k != "env_topology"}
-                if ctx_for_summary:
-                    context_summary += f"\n\n## Session Context\n{json.dumps(ctx_for_summary, ensure_ascii=False)[:500]}"
-
-            # ── 雙軌長時記憶注入 ──
-            # 注入 1: 用戶偏好
-            try:
-                from memory.preference_manager import get_preferences_tag
-                pref_tag = get_preferences_tag()
-                if pref_tag:
-                    context_summary += f"\n\n{pref_tag}"
-            except Exception:
-                pass
-
-            # 注入 2: 歷史 SOP
-            try:
-                from memory.sop_manager import sop_manager as _sop
-                sop_tag = _sop.search_similar_sop(inp.command, threshold=0.85)
-                if sop_tag:
-                    context_summary += f"\n\n{sop_tag}"
-                    logger.info("[ORIENT] Injected History SOP")
-            except Exception:
-                pass
-
-            system = persona_injector.build_system_prompt(
-                context_summary=context_summary,
-                agent_type=inp.context.get("agent_type", "main"),
-            )
-        except ImportError:
-            system = (
-                "你是 ArcMind，一個自主智能體。"
-                "你可以使用工具來搜尋、執行命令、讀寫檔案。"
-                "根據使用者指令，選擇最適合的工具來完成任務。"
-            )
+        # ── P1-4: 取得語義篩選的工具列表（複用 ContextBuilder 已觸發的 CapSelector 快取）──
+        # 注意: ContextBuilder.build() 內部已呼叫 capability_selector.select_all()，
+        # 此處再呼叫 select_tools() 時，意圖 embedding 會命中快取，不會重複 embed。
+        tool_filter = None
+        try:
+            from runtime.capability_selector import capability_selector
+            tool_filter = capability_selector.get_relevant_tool_names(inp.command, top_k=7)
+            if tool_filter:
+                logger.info("[MainLoop] Tool filter: %s", ", ".join(tool_filter[:5]))
+        except Exception:
+            pass  # 篩選失敗不影響功能，會使用全部工具
 
         # ── 使用 Agentic Tool Loop（OpenClaw 的核心執行力）──
         try:
@@ -651,6 +769,18 @@ class MainLoop:
                 # Add current prompt as the final user message
                 messages.append({"role": "user", "content": inp.command})
 
+            # Determine if this task requires tangible outputs (code, files, execution)
+            cmd_lower = inp.command.lower()
+            needs_action = any(kw in cmd_lower for kw in [
+                "build", "create", "write", "implement", "deploy", "run", "setup",
+                "建立", "創建", "寫", "設計", "佈署", "部署", "執行", "跑"
+            ])
+
+            # ── Hallucination Prevention: Strict Role Enforcement ──
+            strict_action_roles = {"qa", "code", "devops"}
+            if inp.context.get("sub_agent_role") in strict_action_roles:
+                needs_action = True
+
             result = agentic_complete(
                 prompt=inp.command,
                 system=system,
@@ -658,7 +788,10 @@ class MainLoop:
                 budget=inp.budget,
                 model=model_override,
                 messages=messages if messages else None,
+                require_tool_usage=needs_action,
+                tool_filter=tool_filter,
             )
+            # The agentic_complete function returns a dict, extract its 'content'
             return {
                 "success": True,
                 "output": _strip_think_tags(result["content"]),

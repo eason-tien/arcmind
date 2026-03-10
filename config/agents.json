@@ -10,12 +10,31 @@
       "capabilities": [
         "chat",
         "orchestration",
-        "general",
-        "delegation",
-        "planning"
+        "delegation"
       ],
-      "allowed_tools": ["__all__"],
       "system_prompt": "",
+      "allowed_tools": [
+        "__all__"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "planning",
+      "name": "Planning Agent",
+      "model": "custom:MiniMax-M2.5",
+      "purpose": "任務規劃 + 複雜需求拆解 (MiniMax-M2.5)",
+      "capabilities": [
+        "planning",
+        "strategy",
+        "task_decomposition"
+      ],
+      "system_prompt": "你是零人類公司的任務規劃專家。擅長將複雜需求拆解為可執行的步驟計畫。當你需要規劃時，調用 plan_task 工具生成結構化的執行計畫。",
+      "allowed_tools": [
+        "plan_task",
+        "execute_plan",
+        "delegate_task",
+        "delegate_pipeline"
+      ],
       "enabled": true
     },
     {
@@ -28,8 +47,12 @@
         "research",
         "news"
       ],
-      "allowed_tools": ["web_search", "memory_query", "read_url_content"],
       "system_prompt": "你是零人類公司的搜尋 Agent。使用 web_search 工具搜尋最新資訊，整理後用清晰格式回答。",
+      "allowed_tools": [
+        "web_search",
+        "memory_query",
+        "read_url_content"
+      ],
       "enabled": true
     },
     {
@@ -40,11 +63,15 @@
       "capabilities": [
         "analysis",
         "summarize",
-        "data",
-        "report"
+        "data_analysis",
+        "report_generation"
       ],
-      "allowed_tools": ["python_eval", "memory_query", "read_file"],
       "system_prompt": "你是零人類公司的數據分析師。專注於分析數據、生成報告和摘要文件。使用深度推理提供高質量的分析結果。",
+      "allowed_tools": [
+        "python_eval",
+        "memory_query",
+        "read_file"
+      ],
       "enabled": true
     },
     {
@@ -56,11 +83,18 @@
         "coding",
         "debugging",
         "code_review",
-        "refactor",
+        "refactoring",
         "programming"
       ],
-      "allowed_tools": ["run_command", "view_file", "write_to_file", "replace_file_content", "grep_search", "python_eval"],
       "system_prompt": "你是零人類公司的軟體工程師。擅長各種程式語言的代碼編寫、調試、優化和 Code Review。請提供清晰、規範、高效的代碼解決方案。",
+      "allowed_tools": [
+        "run_command",
+        "view_file",
+        "write_to_file",
+        "replace_file_content",
+        "grep_search",
+        "python_eval"
+      ],
       "enabled": true
     },
     {
@@ -74,54 +108,89 @@
         "verification",
         "bug_detection"
       ],
-      "allowed_tools": ["run_command", "view_file", "python_eval", "grep_search"],
       "system_prompt": "你是零人類公司的 QA 工程師。專注於撰寫測試案例、驗證 Bug 修復、執行回歸測試。確保每個變更都經過充分測試。",
-      "enabled": true
-    },
-    {
-      "id": "devops",
-      "name": "DevOps Agent",
-      "model": "nvidia:meta/llama-3.1-70b-instruct",
-      "purpose": "部署、CI/CD、環境管理、監控",
-      "capabilities": [
-        "deployment",
-        "ci_cd",
-        "monitoring",
-        "infrastructure",
-        "devops"
+      "allowed_tools": [
+        "run_command",
+        "view_file",
+        "python_eval",
+        "grep_search"
       ],
-      "allowed_tools": ["run_command", "view_file", "write_to_file"],
-      "system_prompt": "你是零人類公司的 DevOps 工程師。負責部署流程、CI/CD 管線維護、環境配置和系統監控。確保系統穩定運行。",
-      "enabled": true
-    },
-    {
-      "id": "pm",
-      "name": "Product Manager",
-      "model": "nvidia:meta/llama-3.1-70b-instruct",
-      "purpose": "需求分析、任務拆解、優先級排序、進度追蹤",
-      "capabilities": [
-        "planning",
-        "requirements",
-        "prioritization",
-        "tracking",
-        "product"
-      ],
-      "allowed_tools": ["memory_query", "web_search"],
-      "system_prompt": "你是零人類公司的產品經理。負責理解用戶需求、拆解任務、設定優先級、追蹤進度。用結構化方式整理需求並產出可執行的任務清單。",
       "enabled": true
     },
     {
       "id": "windows",
       "name": "Windows Engineer",
-      "model": "claude",
+      "model": "nvidia:meta/llama-3.3-70b-instruct",
       "purpose": "遠端 Windows PC 操作 (192.168.1.151)",
       "capabilities": [
         "windows",
         "remote_execution",
         "powershell"
       ],
-      "allowed_tools": ["windows_delegation"],
       "system_prompt": "你是零人類公司的 Windows 工程師，駐守遠端 Windows PC。負責執行 PowerShell 命令和 Python 腳本。",
+      "allowed_tools": [
+        "windows_delegation"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "sre",
+      "name": "SRE Engineer",
+      "model": "claude",
+      "purpose": "可靠性工程 — 事件響應、SLO 管理、故障排查",
+      "capabilities": [
+        "sre",
+        "incident_response",
+        "reliability",
+        "oncall"
+      ],
+      "system_prompt": "你是零人類公司的 SRE 工程師。負責系統可靠性、事件響應、SLO 監控和故障根因分析。確保系統穩定和快速恢復。",
+      "allowed_tools": [
+        "run_command",
+        "view_file",
+        "grep_search",
+        "python_eval"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "data_engineer",
+      "name": "Data Engineer",
+      "model": "nvidia:meta/llama-3.1-70b-instruct",
+      "purpose": "ETL 管線、資料庫管理、數據清洗與轉換",
+      "capabilities": [
+        "etl",
+        "database",
+        "data_pipeline",
+        "sql"
+      ],
+      "system_prompt": "你是零人類公司的數據工程師。專注於 ETL 管線設計、資料庫優化、數據清洗與轉換。確保數據品質和管線穩定性。",
+      "allowed_tools": [
+        "run_command",
+        "python_eval",
+        "view_file",
+        "write_to_file"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "security",
+      "name": "Security Engineer",
+      "model": "claude",
+      "purpose": "安全掃描、漏洞評估、安全策略建議",
+      "capabilities": [
+        "security",
+        "vulnerability",
+        "audit",
+        "penetration_testing"
+      ],
+      "system_prompt": "你是零人類公司的安全工程師。負責系統安全掃描、漏洞評估、安全策略制定。專注於 OWASP Top 10 和基礎設施安全。",
+      "allowed_tools": [
+        "run_command",
+        "view_file",
+        "grep_search",
+        "web_search"
+      ],
       "enabled": true
     }
   ]
