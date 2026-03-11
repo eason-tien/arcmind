@@ -32,6 +32,66 @@ logger = logging.getLogger("arcmind.tool_loop")
 MAX_TOOL_ITERATIONS = 50
 
 
+def _parse_xml_tool_calls(text: str) -> list[dict]:
+    """
+    Parse MiniMax-style XML tool calls from LLM text output.
+    MiniMax-M2.5 sometimes emits tool calls as XML instead of using
+    the OpenAI function calling API:
+
+        <minimax:tool_call>
+        <invoke name="run_command">
+        <parameter name="command">whoami</parameter>
+        </invoke>
+        </minimax:tool_call>
+
+    Also handles [TOOL_CALL] blocks:
+        [TOOL_CALL]
+        {tool => "run_command", args => { --command "whoami" }}
+        [/TOOL_CALL]
+    """
+    results = []
+
+    # Pattern 1: <minimax:tool_call> XML format
+    for match in re.finditer(
+        r'<minimax:tool_call>\s*<invoke\s+name="([^"]+)">(.*?)</invoke>\s*</minimax:tool_call>',
+        text, re.DOTALL
+    ):
+        tool_name = match.group(1)
+        params_block = match.group(2)
+        params = {}
+        for pm in re.finditer(
+            r'<parameter\s+name="([^"]+)">(.*?)</parameter>',
+            params_block, re.DOTALL
+        ):
+            params[pm.group(1)] = pm.group(2).strip()
+        results.append({
+            "id": f"xml_{tool_name}_{len(results)}",
+            "name": tool_name,
+            "input": params,
+        })
+
+    # Pattern 2: [TOOL_CALL] block format
+    for match in re.finditer(
+        r'\[TOOL_CALL\]\s*\{tool\s*=>\s*"([^"]+)",\s*args\s*=>\s*\{(.*?)\}\}\s*\[/TOOL_CALL\]',
+        text, re.DOTALL
+    ):
+        tool_name = match.group(1)
+        args_str = match.group(2).strip()
+        params = {}
+        for pm in re.finditer(r'--(\w+)\s+"([^"]*)"', args_str):
+            params[pm.group(1)] = pm.group(2)
+        if params:
+            results.append({
+                "id": f"block_{tool_name}_{len(results)}",
+                "name": tool_name,
+                "input": params,
+            })
+
+    if results:
+        logger.info("[AgenticLoop] Parsed %d XML/block tool calls from text", len(results))
+    return results
+
+
 # ── Tool Definitions ─────────────────────────────────────────────────────────
 
 class ToolRegistry:
@@ -1339,7 +1399,19 @@ def agentic_complete(
                 }
             logger.info("[AgenticLoop] 🔄 Retry #%d for current step", step_retry_count)
 
-        # ── No tool calls → return text ──
+        # ── No tool calls → check for XML/block tool calls in text ──
+        if not tool_uses and text_response:
+            xml_tools = _parse_xml_tool_calls(text_response)
+            if xml_tools:
+                tool_uses = xml_tools
+                # Strip the XML/block tags from text so they don't leak to user
+                text_response = re.sub(
+                    r'<minimax:tool_call>.*?</minimax:tool_call>', '', text_response, flags=re.DOTALL
+                ).strip()
+                text_response = re.sub(
+                    r'\[TOOL_CALL\].*?\[/TOOL_CALL\]', '', text_response, flags=re.DOTALL
+                ).strip()
+
         if not tool_uses:
             clean_text = _strip_status_tags(text_response)
 
@@ -1364,9 +1436,14 @@ def agentic_complete(
         # ── Execute tool calls ──
         if is_openai_compat:
             # Add assistant message with tool_calls
-            oai_messages.append(resp.get("assistant_message", {
-                "role": "assistant", "content": text_response
-            }))
+            # For XML-parsed tool calls, use plain text (no tool_calls field)
+            assistant_msg = resp.get("assistant_message")
+            if assistant_msg and assistant_msg.get("tool_calls"):
+                oai_messages.append(assistant_msg)
+            else:
+                oai_messages.append({
+                    "role": "assistant", "content": text_response or ""
+                })
         elif is_anthropic:
             oai_messages.append({
                 "role": "assistant",
@@ -1441,11 +1518,19 @@ def agentic_complete(
 
             # Add tool result in provider-specific format
             if is_openai_compat:
-                oai_messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_id,
-                    "content": str(result_str),
-                })
+                if tool_id.startswith(("xml_", "block_")):
+                    # XML-parsed tool calls: use user message since there's no
+                    # matching tool_calls entry in the assistant message
+                    oai_messages.append({
+                        "role": "user",
+                        "content": f"[Tool Result: {tool_name}]\n{str(result_str)}",
+                    })
+                else:
+                    oai_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_id,
+                        "content": str(result_str),
+                    })
             elif is_anthropic:
                 oai_messages.append({
                     "role": "user",
