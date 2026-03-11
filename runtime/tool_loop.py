@@ -1291,18 +1291,24 @@ def agentic_complete(
             logger.debug("[Memory] Auto-injection failed (non-fatal): %s", e)
 
     # ── State Machine Variables ──
-    GLOBAL_FAIL_SAFE = 500        # absolute maximum (只是最後防線，不應該靠這個)
+    # 不限步數。Gateway 的 300s timeout 才是真正的時間安全網。
+    # 這裡只偵測「有沒有在做正事」：
+    #   - 卡死偵測：同一 tool+params 連續重複 → 沒在做正事
+    #   - 連續失敗：tool 一直報錯 → 沒在做正事
+    #   - 正常工作：tool 不同、params 不同、有結果 → 繼續幹
     MAX_STEP_RETRIES = 5          # max retries for a single step
     CHECKPOINT_PRUNE_KEEP = 4     # keep last N tool messages after pruning
     STUCK_THRESHOLD = 5           # 同一 tool+params 連續呼叫 N 次 = 卡死
+    CONSEC_ERROR_LIMIT = 8        # 連續 N 次 tool 全部失敗 = 沒救了
 
     iteration = 0
     step_retry_count = 0       # retries for current step
     last_error_tool = ""       # track which tool is failing
     checkpoint_count = 0       # number of checkpoints passed
-    _recent_calls: list[str] = []  # 最近的 tool call 指紋，用於卡死偵測
+    _recent_calls: list[str] = []   # 最近的 tool call 指紋，用於卡死偵測
+    _consecutive_errors = 0         # 連續失敗次數
 
-    while iteration < GLOBAL_FAIL_SAFE:
+    while True:  # 不限步數，靠 timeout + 卡死偵測 + 連續失敗偵測
         iteration += 1
         logger.info("[AgenticLoop] iteration=%d, model=%s, messages=%d, checkpoints=%d",
                      iteration, chosen, len(oai_messages), checkpoint_count)
@@ -1530,14 +1536,17 @@ def agentic_complete(
                 if handler:
                     try:
                         result_str = handler(**tool_input)
-                        # Reset step retry on successful tool execution
+                        # 成功 → reset 連續失敗計數
+                        _consecutive_errors = 0
                         if step_retry_count > 0 and tool_name != last_error_tool:
                             step_retry_count = 0
                     except Exception as e:
                         result_str = f"Tool execution error: {e}"
                         last_error_tool = tool_name
+                        _consecutive_errors += 1
                 else:
                     result_str = f"Unknown tool: {tool_name}"
+                    _consecutive_errors += 1
 
             tool_calls_log.append({
                 "tool": tool_name,
@@ -1565,18 +1574,18 @@ def agentic_complete(
                     }],
                 })
 
-        # ── Stuck Detection: 同一 tool+params 連續呼叫 = 卡死 ──
+        # ── 「有沒有在做正事」偵測 ──
+
+        # 1. 卡死偵測：同一 tool+params 連續重複 = 空轉
         for tu in tool_uses:
             fingerprint = f"{tu.get('name')}:{json.dumps(tu.get('input',{}), sort_keys=True)}"
             _recent_calls.append(fingerprint)
-        # 只保留最近 STUCK_THRESHOLD 筆
         _recent_calls = _recent_calls[-STUCK_THRESHOLD:]
         if (len(_recent_calls) >= STUCK_THRESHOLD
                 and len(set(_recent_calls)) == 1):
             stuck_tool = tool_uses[0].get("name", "?")
-            logger.warning("[AgenticLoop] 🔄 Stuck detected: %s called %d times with same params, breaking",
+            logger.warning("[AgenticLoop] 🔄 卡死: %s 同參數呼叫 %d 次，停止",
                            stuck_tool, STUCK_THRESHOLD)
-            # 回傳最後一次的結果，不繼續空轉
             last_result = tool_calls_log[-1].get("output", "") if tool_calls_log else ""
             return {
                 "content": last_result or f"⚠️ {stuck_tool} 重複執行 {STUCK_THRESHOLD} 次，已自動停止。",
@@ -1585,6 +1594,18 @@ def agentic_complete(
                 "iterations": iteration,
                 "checkpoints": checkpoint_count,
                 "status": "stuck_break",
+            }
+
+        # 2. 連續失敗偵測：tool 一直報錯 = 沒在做正事
+        if _consecutive_errors >= CONSEC_ERROR_LIMIT:
+            logger.warning("[AgenticLoop] ❌ 連續 %d 次 tool 失敗，停止", _consecutive_errors)
+            return {
+                "content": f"⚠️ 連續 {_consecutive_errors} 次工具執行失敗，已自動停止。請檢查工具配置或簡化指令。",
+                "tool_calls": tool_calls_log,
+                "total_tokens": total_tokens,
+                "iterations": iteration,
+                "checkpoints": checkpoint_count,
+                "status": "error_break",
             }
 
         # ── Auto-prune if messages getting too long (token pressure relief) ──
