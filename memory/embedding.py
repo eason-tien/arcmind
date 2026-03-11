@@ -78,10 +78,10 @@ _embed_cache = _EmbeddingCache()
 
 
 class OllamaEmbedding:
-    """Local Ollama embedding via /api/embeddings with request-level caching."""
+    """Local Ollama embedding via /api/embed with request-level caching."""
 
     def __init__(self, base_url: str = "http://localhost:11434",
-                 model: str = "bge-m3"):
+                 model: str = "nomic-embed-text"):
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._dim: int | None = None
@@ -109,12 +109,12 @@ class OllamaEmbedding:
         import httpx
         try:
             resp = httpx.post(
-                f"{self._base_url}/api/embeddings",
-                json={"model": self._model, "prompt": text},
+                f"{self._base_url}/api/embed",
+                json={"model": self._model, "input": text},
                 timeout=15.0,  # embed 單條不應超過 15s
             )
             resp.raise_for_status()
-            vec = resp.json().get("embedding", [])
+            raw = resp.json(); vec = raw.get("embeddings", [raw.get("embedding", [])]); vec = vec[0] if vec and isinstance(vec[0], list) else vec
             if vec:
                 _embed_cache.put(text, vec)
             return vec
@@ -147,12 +147,12 @@ class OllamaEmbedding:
         for idx, text in to_embed:
             try:
                 resp = httpx.post(
-                    f"{self._base_url}/api/embeddings",
-                    json={"model": self._model, "prompt": text},
+                    f"{self._base_url}/api/embed",
+                    json={"model": self._model, "input": text},
                     timeout=15.0,
                 )
                 resp.raise_for_status()
-                vec = resp.json().get("embedding", [])
+                raw = resp.json(); vec = raw.get("embeddings", [raw.get("embedding", [])]); vec = vec[0] if vec and isinstance(vec[0], list) else vec
                 results[idx] = vec
                 if vec:
                     _embed_cache.put(text, vec)
@@ -180,7 +180,7 @@ def get_adapter() -> EmbeddingAdapter:
             base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
             # Strip /v1 suffix for Ollama native API
             base = base.replace("/v1", "")
-            model = os.getenv("EMBEDDING_MODEL", "bge-m3")
+            model = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
             _cached_adapter = OllamaEmbedding(base_url=base, model=model)
             logger.info("[Embedding] using Ollama: model=%s base=%s", model, base)
         else:

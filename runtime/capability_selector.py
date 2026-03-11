@@ -405,7 +405,7 @@ class CapabilitySelector:
         始終包含基礎工具以確保基本功能。
         """
         # 基礎工具：任何任務都可能需要的核心工具
-        base_tools = {"run_command", "read_file", "write_file"}
+        base_tools = {"run_command", "read_file", "write_file", "read_url_content", "web_search", "memory_query"}
 
         results = self.select_tools(intent, top_k=top_k)
         tool_names = [r.entry.metadata.get("tool_name", r.entry.name) for r in results]

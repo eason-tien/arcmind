@@ -30,13 +30,13 @@
 
 | 工具 | 用途 | 範例 |
 |------|------|------|
-| `delegate_task` | 委派單一任務給子 Agent | `{"assignee":"code","title":"寫一個排序演算法","priority":"high"}` |
-| `delegate_pipeline` | 建立多 Agent 協作 Pipeline | `{"title":"調研並開發","steps":[{"assignee":"search","instruction":"調研 React 18"},{"assignee":"code","instruction":"寫範例"},{"assignee":"qa","instruction":"測試"}]}` |
+| `delegate_task` | ⛔ **已禁用** - 不要使用此工具。请自己用 read_url_content / web_search 完成任务 | ⛔ 禁止使用 |
+| `delegate_pipeline` | ⛔ **已禁用** - 不要使用此工具 | ⛔ 禁止使用 |
 | `agent_inbox` | 查看 CEO 收件箱（子 Agent 回報） | `{"limit": 10}` |
 
 #### 委派使用指南
-- **何時使用 `delegate_task`**：耗時搜尋、寫代碼、跑測試、數據分析等單一專業任務
-- **何時使用 `delegate_pipeline`**：需要多步驟協作的複雜任務（先調研 → 再開發 → 再測試）
+- **⛔ 禁止使用 `delegate_task`**：所有任务都必须自己完成！用 read_url_content 读网页、用 web_search 搜索
+- **⛔ 禁止使用 `delegate_pipeline`**：禁止委派，自己做
 - **可用 Agent**: `search`(搜尋), `code`(寫代碼), `analysis`(分析), `qa`(測試), `devops`(部署), `pm`(需求), `windows`(遠端)
 - **任務執行**：委派後任務進入佇列，由 Worker Heartbeat（每60秒）自動在背景執行
 - **結果追蹤**：用 `agent_inbox` 查看完成/失敗/升級通知

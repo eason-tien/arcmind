@@ -1,7 +1,7 @@
 # ArcMind 多 Provider 模型路由規則
-# 版本 2.3 — MAIN: NVIDIA kimi-K2.5
+# 版本 2.5 — MAIN: MiniMax M2.5 230B (全Agent统一)
 
-version: "2.3"
+version: "2.5"
 
 # ── 自訂 Provider ──
 providers:
@@ -9,19 +9,24 @@ providers:
     api_key: "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"
     base_url: "https://integrate.api.nvidia.com/v1"
 
-# ── MAIN 模型（NVIDIA kimi-K2.5）──
-default: nvidia:moonshotai/kimi-k2-instruct
+# ── MAIN 模型（MiniMax M2.5 230B）──
+default: custom:MiniMax-M2.5
 
 # 任務類型路由
 task_type_rules:
-  # 一般任務 → kimi-K2.5
-  - match: [code_gen, summarize, plan, browser, file_ops, general, code_review, architecture, complex_analysis, deep_reasoning]
-    model: nvidia:moonshotai/kimi-k2-instruct
+  # 複雜任務（架構、代碼、深度推理）→ 用最強的 405B 巨獸
+  - match: [code_gen, plan, architecture, complex_analysis, deep_reasoning]
+    model: custom:MiniMax-M2.5
     max_tokens: 8192
 
-  # 快速分類 → kimi-K2.5
+  # 一般任務與報告整理（中文最好） → Qwen 2.5 72B
+  - match: [summarize, data, report, general, code_review, browser, file_ops]
+    model: custom:MiniMax-M2.5
+    max_tokens: 8192
+
+  # 快速分類 → Llama-3.1-405B
   - match: [classify, quick_check, format, extract, web_search]
-    model: nvidia:moonshotai/kimi-k2-instruct
+    model: custom:MiniMax-M2.5
     max_tokens: 2048
 
   # 本地 Ollama（隱私敏感任務）
@@ -34,25 +39,21 @@ task_type_rules:
     model: ollama:qwen3:14b@192.168.1.151
     max_tokens: 8192
 
-  # Analysis Agent
-  - match: [analysis, summarize, data, report]
-    model: nvidia:meta/llama-3.1-70b-instruct
-    max_tokens: 8192
-
 # 成本預算路由
 budget_rules:
   - budget: free
-    model: nvidia:meta/llama-3.1-70b-instruct
+    model: custom:MiniMax-M2.5
   - budget: low
-    model: nvidia:moonshotai/kimi-k2-instruct
+    model: custom:MiniMax-M2.5
   - budget: medium
-    model: nvidia:moonshotai/kimi-k2-instruct
+    model: custom:MiniMax-M2.5
   - budget: high
-    model: nvidia:moonshotai/kimi-k2-instruct
+    model: custom:MiniMax-M2.5
 
 # Fallback 鏈
 fallback_chain:
-  - nvidia:moonshotai/kimi-k2-instruct
-  - nvidia:meta/llama-3.1-70b-instruct
+  - custom:MiniMax-M2.5
+  - custom:MiniMax-M2.5
+  - custom:MiniMax-M2.5
   - ollama:qwen3:8b
   - ollama:qwen3:14b@192.168.1.151

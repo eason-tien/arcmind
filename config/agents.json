@@ -40,7 +40,7 @@
     {
       "id": "search",
       "name": "Search Agent",
-      "model": "nvidia:meta/llama-3.1-70b-instruct",
+      "model": "custom:MiniMax-M2.5",
       "purpose": "網路搜尋 + 資訊整理 (NVIDIA NIM 免費 70B)",
       "capabilities": [
         "web_search",
@@ -58,7 +58,7 @@
     {
       "id": "analysis",
       "name": "Analysis Agent",
-      "model": "nvidia:meta/llama-3.1-70b-instruct",
+      "model": "custom:MiniMax-M2.5",
       "purpose": "數據分析 + 文件摘要 + 報告生成",
       "capabilities": [
         "analysis",
@@ -77,7 +77,7 @@
     {
       "id": "code",
       "name": "Code Agent",
-      "model": "custom:MiniMax-M2.1",
+      "model": "custom:MiniMax-M2.5",
       "purpose": "代碼生成、調試、Code Review、重構",
       "capabilities": [
         "coding",
@@ -100,7 +100,7 @@
     {
       "id": "qa",
       "name": "QA Agent",
-      "model": "nvidia:meta/llama-3.1-70b-instruct",
+      "model": "custom:MiniMax-M2.5",
       "purpose": "品質保證 — 測試生成、Bug 驗證、回歸檢測",
       "capabilities": [
         "testing",
@@ -120,7 +120,7 @@
     {
       "id": "windows",
       "name": "Windows Engineer",
-      "model": "nvidia:meta/llama-3.3-70b-instruct",
+      "model": "custom:MiniMax-M2.5",
       "purpose": "遠端 Windows PC 操作 (192.168.1.151)",
       "capabilities": [
         "windows",
@@ -136,7 +136,7 @@
     {
       "id": "sre",
       "name": "SRE Engineer",
-      "model": "claude",
+      "model": "custom:MiniMax-M2.5",
       "purpose": "可靠性工程 — 事件響應、SLO 管理、故障排查",
       "capabilities": [
         "sre",
@@ -156,7 +156,7 @@
     {
       "id": "data_engineer",
       "name": "Data Engineer",
-      "model": "nvidia:meta/llama-3.1-70b-instruct",
+      "model": "custom:MiniMax-M2.5",
       "purpose": "ETL 管線、資料庫管理、數據清洗與轉換",
       "capabilities": [
         "etl",
@@ -175,21 +175,38 @@
     },
     {
       "id": "security",
-      "name": "Security Engineer",
-      "model": "claude",
-      "purpose": "安全掃描、漏洞評估、安全策略建議",
+      "name": "Security Engineer (White Hat)",
+      "model": "custom:MiniMax-M2.5",
+      "purpose": "白帽安全工程 — 漏洞扫描、渗透测试、安全审计、基础设施安全、代码审计",
       "capabilities": [
         "security",
         "vulnerability",
         "audit",
-        "penetration_testing"
+        "penetration_testing",
+        "port_scanning",
+        "web_security",
+        "code_review_security",
+        "infrastructure_security",
+        "ssl_tls",
+        "dns_recon",
+        "white_hat",
+        "compliance"
       ],
-      "system_prompt": "你是零人類公司的安全工程師。負責系統安全掃描、漏洞評估、安全策略制定。專注於 OWASP Top 10 和基礎設施安全。",
+      "system_prompt": "你是零人类公司的白帽安全工程师 (White Hat Security Engineer)。\n\n## 核心职责\n1. **漏洞评估**: 使用 nmap、nikto 等工具扫描系统漏洞\n2. **渗透测试**: 模拟攻击者视角，发现安全弱点\n3. **基础设施安全**: 审计防火墙、SSH、用户权限、网络配置\n4. **代码安全审计**: 使用 bandit 检测 Python 代码中的安全漏洞\n5. **SSL/TLS 检测**: 检查证书有效性和弱加密协议\n6. **依赖安全**: 检查第三方库的已知漏洞 (CVE)\n7. **合规检查**: 确保系统符合安全最佳实践\n\n## 可用安全工具\n- `security_port_scan`: nmap 端口扫描 (quick/standard/full/service/vuln)\n- `security_web_scan`: nikto Web 漏洞扫描\n- `security_system_audit`: lynis 系统安全审计\n- `security_ssl_check`: SSL/TLS 证书和协议检测\n- `security_dns_recon`: DNS 信息收集 + WHOIS\n- `security_code_audit`: bandit Python 代码安全分析\n- `security_infra_check`: 基础设施安全检查\n- `security_full_audit`: 一键综合安全审计\n- `run_command`: 执行系统命令 (用于自定义安全检查)\n\n## 工作原则\n- 始终以白帽 (ethical hacking) 原则工作\n- 只扫描授权的内部系统和自有域名\n- 发现漏洞后提供修复建议和优先级排序\n- 输出结构化的安全报告，包含风险等级 (Critical/High/Medium/Low)\n- 关注 OWASP Top 10、CIS Benchmarks、CVE 数据库\n",
       "allowed_tools": [
         "run_command",
-        "view_file",
-        "grep_search",
-        "web_search"
+        "read_file",
+        "write_file",
+        "web_search",
+        "security_port_scan",
+        "security_web_scan",
+        "security_system_audit",
+        "security_ssl_check",
+        "security_dns_recon",
+        "security_code_audit",
+        "security_infra_check",
+        "security_full_audit",
+        "python_eval"
       ],
       "enabled": true
     }

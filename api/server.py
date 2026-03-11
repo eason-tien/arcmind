@@ -153,9 +153,6 @@ async def lifespan(app: FastAPI):
     app.state.supervisor_task = supervisor_task
     logger.info("🔗 Channel Supervisor started (%d channels)", len(supervisor._channels))
 
-    from gateway.server import _delivery_worker
-    delivery_task = asyncio.create_task(_delivery_worker(), name="delivery_worker")
-    app.state.delivery_task = delivery_task
 
     # ── Federation Bridge: 跨實例協作 ──
     if settings.federation_enabled:
@@ -184,7 +181,6 @@ async def lifespan(app: FastAPI):
     # ── Shutdown ─────────────────────────────────────────────────────────────
     logger.info("ArcMind shutting down...")
 
-    delivery_task.cancel()
 
     # 停止 EventBus
     await event_bus.stop()

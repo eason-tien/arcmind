@@ -534,12 +534,11 @@ class ModelRouter:
             provider_name, model_id = self._parse_model(m_str)
             provider = self._providers.get(provider_name)
             if not provider:
-                logger.debug("Provider %s not available, skipping.", provider_name)
                 continue
             try:
-                logger.info("Calling %s  model=%s  task_type=%s",
-                            provider_name, model_id, task_type)
+                logger.info("Calling %s model=%s payload=msg_list=%s system=%s", provider_name, model_id, msg_list, system)
                 return provider.complete(model_id, msg_list, system, final_max)
+
             except Exception as e:
                 logger.warning("%s/%s failed: %s. Trying next.", provider_name, model_id, e)
                 last_error = e

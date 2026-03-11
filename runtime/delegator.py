@@ -99,6 +99,9 @@ _CAPABILITY_KEYWORDS: dict[str, list[str]] = {
     "security": [
         "安全", "security", "漏洞", "vulnerability", "渗透", "滲透",
         "penetration", "audit", "owasp", "xss", "sql injection", "cve",
+        "扫描", "描掃", "scan", "端口", "port", "nmap", "nikto", "lynis",
+        "审计", "審計", "白帽", "whitehat", "检测", "檢測", "防火墙", "防火牆",
+        "firewall", "ssl", "tls", "dns", "入侵", "intrusion",
     ],
     # data engineering (template: data_engineer)
     "etl": [
@@ -163,7 +166,7 @@ _CASUAL_PATTERNS: list[str] = [
     # Simple affirmations/negations
     r"^(是的|不是|不要|不用|不了|算了|沒事|没事|無所謂|随便|隨便)[\s!！。.？?，,~～]*$",
 ]
-_CASUAL_MAX_LEN = 12  # Commands ≤ this length with no domain keywords → casual
+_CASUAL_MAX_LEN = 15  # Covers short greetings, not task requests  # Commands ≤ this length with no domain keywords → casual
 
 
 @dataclass
@@ -209,12 +212,46 @@ class Delegator:
         for pattern in _CASUAL_PATTERNS:
             if re.match(pattern, cmd_lower):
                 return True
-        # Short command heuristic: if very short and no domain keywords, treat as casual
+        # Conversational / role-setting patterns (Chinese + English)
+        # Catches: "你叫Leo是我的助理", "我是工程部经理", "请记住...", etc.
+        _CONV_KEYWORDS = [
+            '你叫', '我叫', '你是我的', '你的名字',
+            '个人助理', '工作助手', '请记住', '从现在开始',
+            '你的角色', '你的身份', 'your name is', 'you are my',
+            'remember that', 'from now on',
+        ]
+        if any(kw in cmd for kw in _CONV_KEYWORDS):
+            logger.debug("[Delegator] Conversational keyword matched: '%s'", cmd[:40])
+            return True
+        # Also detect "我是..." self-introduction (short, no domain keywords)
+        if re.match(r'^我是.{1,20}$', cmd) and not any(
+            kw in cmd_lower for cap_kws in _CAPABILITY_KEYWORDS.values()
+            for kw in cap_kws if len(kw) >= 3
+        ):
+            logger.debug("[Delegator] Self-intro detected: '%s'", cmd[:40])
+            return True
+                # Short command heuristic: if very short and no domain/action keywords, treat as casual
         if len(cmd) <= _CASUAL_MAX_LEN:
+            # Check domain keywords first
             for keywords in _CAPABILITY_KEYWORDS.values():
-                if any(kw in cmd_lower for kw in keywords if len(kw) >= 3):
+                if any(kw in cmd_lower for kw in keywords if len(kw) >= 2):
                     return False  # Has a meaningful domain keyword → not casual
-            return True  # Short + no domain keywords → casual
+            # Check action verbs that indicate a real task (not casual chat)
+            _TASK_ACTIONS = [
+                '扫描', '检查', '檢查', '分析', '执行', '執行',
+                '创建', '創建', '部署', '修复', '修復',
+                '下载', '下載', '安装', '卸载', '卸載',
+                '启动', '啟動', '停止', '重启', '重啟',
+                '编译', '編譯', '打包', '发布', '發布',
+                '备份', '備份', '恢复', '恢復',
+                '导出', '導出', '导入', '導入',
+                '端口', '服务', '服務', '审计', '審計',
+                'scan', 'check', 'deploy', 'build', 'run',
+                'install', 'start', 'stop', 'restart',
+            ]
+            if any(kw in cmd_lower for kw in _TASK_ACTIONS):
+                return False  # Has a task action verb → not casual
+            return True  # Short + no domain/action keywords → casual
         return False
 
     def _is_onboarding(self) -> bool:
@@ -239,7 +276,7 @@ class Delegator:
         # min_score 0.50: 過濾掉低相關性的「噪音匹配」（簡單問候、閒聊等）
         try:
             from runtime.capability_selector import capability_selector
-            results = capability_selector.select_agents(command, top_k=5, min_score=0.50)
+            results = capability_selector.select_agents(command, top_k=5, min_score=0.70)
             if results:
                 scores = []
                 seen_caps = set()
@@ -294,21 +331,9 @@ class Delegator:
             if re.search(pattern, cmd_lower):
                 return True
 
-        # 語義信號：檢查是否有多個不同類型的高分 Agent 匹配
-        # 閾值 0.50 防止簡單對話誤觸多 Agent
-        try:
-            from runtime.capability_selector import capability_selector
-            results = capability_selector.select_agents(command, top_k=3, min_score=0.50)
-            if len(results) >= 2:
-                # 確認是不同 agent
-                agent_ids = set(r.entry.metadata.get("agent_id") for r in results)
-                if len(agent_ids) >= 2:
-                    logger.debug("[Delegator] Semantic multi-agent signal: %s",
-                                 ", ".join(agent_ids))
-                    return True
-        except Exception:
-            pass
-
+        # 語義信號已移除：僅依賴關鍵字信號判斷多 Agent
+        # 原因：語義匹配太寬鬆，簡單的端口掃描等單一任務會被誤判為多 Agent
+        # 只有明確的 "先...再"、"然後" 等多步驟信號才觸發多 Agent
         return False
 
     # ── Single-agent routing ─────────────────────────────────────────────────
@@ -345,8 +370,8 @@ class Delegator:
         # 低信心度的匹配不委派 — 讓 CEO 直接處理
         # 語義: cosine_sim < 0.50 不委派（nomic-embed-text 的合理閾值）
         # 關鍵字: 需要 2+ 個關鍵字匹配（2/3=0.67 > 0.50）
-        if match.confidence < 0.50:
-            logger.info("[Delegator] Low confidence %.3f for cap='%s', CEO handles directly",
+        if match.confidence < 0.85:
+            logger.info("[Delegator] Below delegation threshold %.3f for cap='%s', CEO handles directly",
                         match.confidence, best_cap)
             return None
 
@@ -610,7 +635,13 @@ class Delegator:
         # Aggregate
         total_tokens = sum(r.get("tokens", 0) for r in results)
         total_elapsed = sum(r.get("elapsed_s", 0) for r in results)
-        final_output = results[-1].get("output", "") if results else ""
+        # Use the best (longest successful) output, not just the last step
+        # This prevents a failed/empty later step from overriding a good earlier result
+        successful_outputs = [r.get("output", "") for r in results if r.get("success") and r.get("output")]
+        if successful_outputs:
+            final_output = max(successful_outputs, key=len)
+        else:
+            final_output = results[-1].get("output", "") if results else ""
         all_success = all(r.get("success") for r in results)
 
         # Emit pipeline completion event

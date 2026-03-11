@@ -28,6 +28,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
+import threading
 
 from version import __version__ as _arcmind_version
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, UploadFile, File, APIRouter
@@ -406,6 +407,65 @@ async def _handle_system_command(command: str, ctx: SessionContext) -> str:
 
 # ── Agent Task Handler ──────────────────────────────────────────────────────
 
+
+STALL_TIMEOUT = 300  # 5 minutes with no heartbeat = stalled
+
+
+async def _run_with_heartbeat_monitor(loop_input, main_loop):
+    """Run agent task with heartbeat monitoring. No hard timeout.
+
+    Instead of killing after N seconds, we:
+    1. Let the agent run as long as it needs
+    2. Check heartbeat every 30s
+    3. Only cancel if NO heartbeat update for 5 minutes (= genuinely stuck)
+    """
+    from runtime.tool_loop import get_heartbeat_by_thread, clear_heartbeat_by_thread
+
+    loop = asyncio.get_event_loop()
+    thread_id_future = loop.create_future()
+
+    def _run_in_thread():
+        tid = threading.get_ident()
+        loop.call_soon_threadsafe(thread_id_future.set_result, tid)
+        return main_loop.run(loop_input)
+
+    task = asyncio.create_task(asyncio.to_thread(_run_in_thread))
+
+    # Wait for thread ID (max 10s)
+    try:
+        thread_id = await asyncio.wait_for(thread_id_future, timeout=10)
+    except asyncio.TimeoutError:
+        logger.warning("[Gateway] Could not get thread ID, running without monitoring")
+        return await task
+
+    # Monitor heartbeat
+    while not task.done():
+        await asyncio.sleep(30)
+        if task.done():
+            break
+
+        hb = get_heartbeat_by_thread(thread_id)
+        if hb:
+            import time as _time
+            stall = _time.time() - hb["ts"]
+            if stall > STALL_TIMEOUT:
+                logger.error(
+                    "[Gateway] Agent stalled: no activity for %.0fs, "
+                    "iteration=%d, last_action=%s — cancelling",
+                    stall, hb["iteration"], hb["action"]
+                )
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                clear_heartbeat_by_thread(thread_id)
+                return None  # Signal: stalled
+
+    clear_heartbeat_by_thread(thread_id)
+    return task.result()
+
+
 async def _handle_agent_task(
     msg: InboundMessage,
     ctx: SessionContext,
@@ -460,10 +520,11 @@ async def _handle_agent_task(
             model_hint=model_override or None,
         )
 
-        result = await asyncio.wait_for(
-            asyncio.to_thread(main_loop.run, loop_input),
-            timeout=300,  # 5 minute max for any single request
-        )
+        result = await _run_with_heartbeat_monitor(loop_input, main_loop)
+
+        # Stall detected
+        if result is None:
+            return "⚠️ Agent 停滞超过5分钟无活动，已自动终止。请重试或拆分任务。"
 
         # Record token usage
         if result.tokens_used:

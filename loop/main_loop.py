@@ -37,6 +37,88 @@ from memory.working_memory import working_memory
 logger = logging.getLogger("arcmind.main_loop")
 
 
+def _strip_dangerous_html(text: str) -> str:
+    """Strip dangerous HTML tags from AI responses."""
+    if not text:
+        return text
+    for tag in ['script', 'style', 'iframe', 'embed', 'object', 'applet']:
+        text = re.sub(rf'<{tag}[^>]*>.*?</{tag}>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(rf'<{tag}[^>]*/\s*>', '', text, flags=re.IGNORECASE)
+    for tag in ['link', 'meta']:
+        text = re.sub(rf'<{tag}[^>]*/?>\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'<action[^>]*>.*?</action>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<tool_call>.*?</tool_call>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'</?(?:action|tool_call|command|parameters|tool_name)[^>]*>', '', text, flags=re.IGNORECASE)
+    return text
+
+
+def _normalize_ml_content(content):
+    """Normalize model response content to plain string."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        return content.get("text", content.get("content", "")) or ""
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict):
+                t = block.get("text", block.get("content", ""))
+                if t:
+                    parts.append(str(t))
+            elif isinstance(block, str):
+                parts.append(block)
+            elif hasattr(block, "text") and block.text:
+                parts.append(str(block.text))
+        return "\n".join(parts) if parts else ""
+    if hasattr(content, "text"):
+        return str(content.text) if content.text else ""
+    return str(content)
+
+
+def _llm_classify_intent(command: str, model: str = None) -> str:
+    """Use LLM to classify user intent. Replaces keyword-based NLC.
+    Returns: 'action', 'question', or 'chat'.
+    """
+    from runtime.model_router import model_router
+    import logging
+    _log = logging.getLogger("arcmind.main_loop")
+    try:
+        resp = model_router.complete(
+            prompt=(
+                "将以下用户请求分类为三种类型之一：\n"
+                "- action: 用户想要执行操作，或需要通过系统命令获取信息（安装、创建、"
+                "部署、配置、搭建、下载、上传、启动、停止、删除、修复、更新、扫描、测试、"
+                "克隆、生成、制作等需要执行的任务；也包括：检查是否已安装、"
+                "查看系统/服务/容器/文件/端口状态、确认某东西是否存在、"
+                "列出目录内容等需要执行命令才能回答的请求）\n"
+                "- question: 用户在询问概念性知识或请求分析解释，不需要执行系统命令就能回答"
+                "（为什么、是什么、怎么回事、你觉得、解释一下、什么意思、什么原因等）\n"
+                "- chat: 闲聊、问候、日常对话（你好、谢谢、再见等）\n\n"
+                "只回复一个词: action, question, 或 chat"
+            ),
+            system="你是意图分类器。只回复一个英文词: action, question, 或 chat。不要解释。",
+            model=model,
+            max_tokens=10,
+            task_type="general",
+            budget="low",
+        )
+        result = resp.content.strip().lower().rstrip(".").strip()
+        if result in ("action", "question", "chat"):
+            _log.info("[MainLoop] LLM intent: %s for command: %s", result, command[:50])
+            return result
+        for cat in ("action", "question", "chat"):
+            if cat in result:
+                _log.info("[MainLoop] LLM intent (fuzzy): %s from '%s'", cat, result)
+                return cat
+        _log.warning("[MainLoop] Unexpected intent: '%s', default='action'", result)
+        return "action"
+    except Exception as e:
+        _log.warning("[MainLoop] Intent classification failed: %s, default='action'", e)
+        return "action"
+
+
 def _strip_think_tags(text: str) -> str:
     """Strip <think>...</think> and raw tool-call markup from model output."""
     if not text:
@@ -51,6 +133,10 @@ def _strip_think_tags(text: str) -> str:
     text = re.sub(r"<\|tool_?[a-z_]*\|>", "", text)
     # Strip function call patterns like functions.xxx:N
     text = re.sub(r"functions\.\w+:\d+\s*", "", text)
+    text = re.sub(r'\{"command"\s*:\s*"[^"]*"(?:,\s*"[^"]*"\s*:\s*[^}]*)?\}', '', text)
+    text = re.sub(r'<\|/?tool[^|]*\|>', '', text)
+    text = re.sub(r"\[\s*\{\s*'type'\s*:\s*'text'[^]]*\]", '', text)
+    text = _strip_dangerous_html(text)
     return text.strip()
 
 # ── 資料結構 ──────────────────────────────────────────────────────────────────
@@ -662,31 +748,9 @@ class MainLoop:
                             "delegated_to": match.agent_id,
                         }
                     else:
-                        # ── 失敗重路由：嘗試次佳 Agent ──
-                        logger.warning("[MainLoop] Delegation to %s failed (%s), trying re-route...",
-                                       match.agent_id, result.get("error", "unknown"))
-                        try:
-                            scores = delegator._score_capabilities(inp.command)
-                            tried = {match.agent_id}
-                            for cap, score in scores:
-                                alt_match = delegator._find_best_agent(cap)
-                                if alt_match and alt_match.agent_id not in tried and score >= 0.50:
-                                    alt_match.confidence = score
-                                    logger.info("[MainLoop] 🔁 Re-routing to %s (%s, conf=%.3f)",
-                                                alt_match.agent_name, alt_match.capability, alt_match.confidence)
-                                    alt_result = delegator.execute(alt_match, inp.command)
-                                    if alt_result.get("success"):
-                                        return {
-                                            "success": True,
-                                            "output": alt_result.get("output", ""),
-                                            "tokens": alt_result.get("tokens", 0),
-                                            "tool_calls": alt_result.get("tool_calls", []),
-                                            "delegated_to": alt_match.agent_id,
-                                        }
-                                    tried.add(alt_match.agent_id)
-                        except Exception as re_err:
-                            logger.debug("[MainLoop] Re-route failed: %s", re_err)
-                        logger.warning("[MainLoop] All delegation attempts failed, CEO handling directly")
+                        # CEO主导原则：委派失败时不再轮转其他Agent，CEO直接处理
+                        logger.info("[MainLoop] Delegation to %s failed, CEO handles directly",
+                                    match.agent_id)
             except ImportError:
                 pass
             except Exception as e:
@@ -743,11 +807,101 @@ class MainLoop:
         # ── P1-4: 取得語義篩選的工具列表（複用 ContextBuilder 已觸發的 CapSelector 快取）──
         # 注意: ContextBuilder.build() 內部已呼叫 capability_selector.select_all()，
         # 此處再呼叫 select_tools() 時，意圖 embedding 會命中快取，不會重複 embed。
+        # ── Casual chat detection: bypass tool system entirely ──
+        # Import utilities needed by both chat and agentic paths
+        # _strip_think_tags is defined at module level (enhanced version with HTML/markup stripping)
+
+        is_casual = False
+        try:
+            from runtime.delegator import Delegator
+            is_casual = Delegator._is_casual_chat(inp.command)
+        except Exception:
+            pass
+
+        if is_casual:
+            # ── Check if this is a knowledge question that needs tools ──
+            _KNOWLEDGE_MARKERS = [
+                '什么是', '怎么', '如何', '为什么', '哪个', '哪些',
+                '有没有', '能不能', '是不是', '可以吗',
+                '最近', '现在', '今天', '明天', '这周',
+                '新闻', '资讯', '消息', '动态',
+                '多少钱', '价格', '汇率', '股价',
+                '天气', '温度',
+                '谁', 'who', 'what', 'how', 'why', 'when', 'where',
+                '?', '？',
+            ]
+            cmd_lower = inp.command.lower()
+            needs_search = any(m in cmd_lower for m in _KNOWLEDGE_MARKERS)
+            if needs_search:
+                logger.info("[MainLoop] Knowledge question detected, using agentic mode with tools")
+                is_casual = False  # Fall through to agentic mode
+            else:
+                # ── Chat Mode: single-shot LLM call without any tools ──
+                logger.info("[MainLoop] Chat mode: no tools, lightweight prompt")
+            try:
+                from runtime.model_router import model_router
+
+                # Build lightweight chat system prompt (no TOOLS.md)
+                try:
+                    from persona.loader import persona_loader
+                    soul = persona_loader.get_soul() or ""
+                    user_md = persona_loader.get_user() or ""
+                    chat_system = soul + "\n\n" + user_md
+                except Exception:
+                    chat_system = system  # fallback to full system prompt
+
+                # Build messages with conversation history
+                chat_messages = []
+                chat_messages.append({"role": "system", "content": chat_system})
+                conv_history = inp.context.get("conversation_history", [])
+                if conv_history:
+                    for turn in conv_history[:-1]:
+                        chat_messages.append({
+                            "role": turn["role"],
+                            "content": turn["content"],
+                        })
+                chat_messages.append({"role": "user", "content": inp.command})
+
+                chosen = model_override or model_router.select_model(inp.task_type, inp.budget)[0]
+                provider_name, model_id = model_router._parse_model(chosen)
+                provider = model_router._providers.get(provider_name)
+
+                if provider:
+                    # Single-shot chat completion without tools
+                    # provider.complete() returns ModelResponse dataclass
+                    # Messages already include system prompt, so pass system=None
+                    resp = provider.complete(
+                        model=model_id,
+                        messages=chat_messages,
+                        system=None,  # system is already in chat_messages[0]
+                        max_tokens=2048,
+                    )
+                    text = _normalize_ml_content(resp.content) if hasattr(resp, 'content') else str(resp)
+                    tokens = resp.total_tokens if hasattr(resp, 'total_tokens') else 0
+                    return {
+                        "success": True,
+                        "output": _strip_think_tags(text) if text else "...",
+                        "tokens": tokens,
+                        "tool_calls": [],
+                    }
+            except Exception as chat_err:
+                logger.warning("[MainLoop] Chat mode failed, falling through to agentic: %s", chat_err)
+            # If chat mode fails, fall through to normal agentic mode below
+
+        # ── Normal task mode: tool filtering + agentic loop ──
         tool_filter = None
         try:
             from runtime.capability_selector import capability_selector
-            tool_filter = capability_selector.get_relevant_tool_names(inp.command, top_k=7)
+            tool_filter = capability_selector.get_relevant_tool_names(inp.command, top_k=20)
             if tool_filter:
+                # URL 检测：如果命令中包含 URL，强制注入 read_url_content
+                import re as _re
+                if _re.search(r'https?://', inp.command):
+                    _url_tools = ["read_url_content", "web_search"]
+                    for _ut in _url_tools:
+                        if _ut not in tool_filter:
+                            tool_filter.insert(0, _ut)
+                    logger.info("[MainLoop] URL detected, injected read_url_content + web_search into tool_filter")
                 logger.info("[MainLoop] Tool filter: %s", ", ".join(tool_filter[:5]))
         except Exception:
             pass  # 篩選失敗不影響功能，會使用全部工具
@@ -760,8 +914,9 @@ class MainLoop:
             messages = []
             conv_history = inp.context.get("conversation_history", [])
             if conv_history:
-                # Include prior turns (skip last user message — we'll add it fresh)
-                for turn in conv_history[:-1]:
+                # 限制对话历史到最近 10 条消息，防止上下文过长导致偷懒
+                recent_history = conv_history[-11:-1] if len(conv_history) > 11 else conv_history[:-1]
+                for turn in recent_history:
                     messages.append({
                         "role": turn["role"],
                         "content": turn["content"],
@@ -769,17 +924,40 @@ class MainLoop:
                 # Add current prompt as the final user message
                 messages.append({"role": "user", "content": inp.command})
 
-            # Determine if this task requires tangible outputs (code, files, execution)
+            # LLM-based intent classification (replaces keyword NLC)
             cmd_lower = inp.command.lower()
-            needs_action = any(kw in cmd_lower for kw in [
-                "build", "create", "write", "implement", "deploy", "run", "setup",
-                "建立", "創建", "寫", "設計", "佈署", "部署", "執行", "跑"
-            ])
+            intent = _llm_classify_intent(inp.command, model_override)
+            needs_action = (intent == "action")
+            logger.info("[MainLoop] LLM intent: %s, needs_action=%s", intent, needs_action)
 
             # ── Hallucination Prevention: Strict Role Enforcement ──
             strict_action_roles = {"qa", "code", "devops"}
             if inp.context.get("sub_agent_role") in strict_action_roles:
                 needs_action = True
+
+            # 强制中文回复 + 反幻觉指令
+            if system:
+                system = system + (
+                    "\n\n**核心规则（必须遵守）**：\n"
+                    "1. 你必须始终使用简体中文回复用户。\n"
+                    "2. **严禁幻觉（最高优先级）**：\n"
+                    "   - 你绝对不可以声称已完成任何操作而没有实际调用工具\n"
+                    "   - 安装软件 → 必须用 run_command 执行\n"
+                    "   - 克隆仓库 → 必须用 run_command 执行 git clone\n"
+                    "   - 生成文件 → 必须用 write_file 或 run_command\n"
+                    "   - 读取网页 → 必须用 read_url_content\n"
+                    "   - 搜索信息 → 必须用 web_search\n"
+                    "3. **文件验证原则**：\n"
+                    "   - 如果你说某文件存在，你必须先用 run_command 执行 ls 确认\n"
+                    "   - 绝对不能编造文件路径、文件大小等具体信息\n"
+                    "4. **诚实原则**：\n"
+                    "   - 如果你之前声称做了某事但实际没有执行，你必须承认\n"
+                    "   - 如果你不能完成某任务，说明原因，不要假装完成\n"
+                    "5. **禁止的行为**：\n"
+                    "   - 禁止说已完成但没调用 run_command\n"
+                    "   - 禁止编造文件路径和输出结果\n"
+                    "   - 禁止基于之前的虚假对话继续编造"
+                )
 
             result = agentic_complete(
                 prompt=inp.command,
@@ -810,7 +988,7 @@ class MainLoop:
             )
             return {
                 "success": True,
-                "output": _strip_think_tags(resp.content),
+                "output": _strip_think_tags(_normalize_ml_content(resp.content)),
                 "tokens": resp.total_tokens,
             }
 

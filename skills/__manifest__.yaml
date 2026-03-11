@@ -570,3 +570,30 @@ skills:
         type: array
       - name: executions
         type: array
+
+  - name: security_scan
+    module: security_scan.py
+    handler: full_security_audit
+    version: "1.0"
+    description: "白帽安全扫描与漏洞评估 — 端口扫描(nmap)、Web漏洞(nikto)、系统审计(lynis)、SSL检测、代码审计(bandit)"
+    permissions: [shell, network, filesystem]
+    tags: [security, scan, vulnerability, audit, pentest, whitehat, nmap, nikto]
+    governor_required: false
+    inputs:
+      - name: target
+        type: string
+        required: false
+        default: "localhost"
+        description: "扫描目标 IP 或域名"
+      - name: include_web
+        type: bool
+        required: false
+        default: false
+        description: "是否包含 Web 漏洞扫描"
+    outputs:
+      - name: summary
+        type: dict
+        description: "审计摘要"
+      - name: report_path
+        type: string
+        description: "报告文件路径"

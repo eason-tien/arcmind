@@ -1,0 +1,84 @@
+name: security_scan
+description: "白帽安全扫描与漏洞评估 — 端口扫描(nmap)、Web漏洞(nikto)、系统审计(lynis)、SSL检测、代码审计(bandit)、依赖检查"
+version: "1.0.0"
+author: "ArcMind Security"
+
+triggers:
+  - "安全扫描"
+  - "漏洞评估"
+  - "端口扫描"
+  - "渗透测试"
+  - "安全审计"
+  - "security scan"
+  - "vulnerability"
+  - "nmap"
+  - "nikto"
+  - "pentest"
+  - "audit"
+  - "白帽"
+
+actions:
+  port_scan:
+    description: "端口扫描 (nmap) — 发现开放端口和服务"
+    params:
+      target: { type: string, required: true, description: "目标 IP 或域名" }
+      scan_type: { type: string, default: "quick", description: "quick/standard/full/service/vuln" }
+      ports: { type: string, default: "", description: "自定义端口范围" }
+
+  web_vuln_scan:
+    description: "Web 漏洞扫描 (nikto) — 检测 Web 服务器漏洞"
+    params:
+      target: { type: string, required: true }
+      port: { type: integer, default: 80 }
+      ssl: { type: boolean, default: false }
+
+  system_audit:
+    description: "系统安全审计 (lynis) — 全面检查系统安全配置"
+    params:
+      profile: { type: string, default: "default" }
+
+  ssl_check:
+    description: "SSL/TLS 证书检测 — 检查证书有效性和弱协议"
+    params:
+      target: { type: string, required: true }
+      port: { type: integer, default: 443 }
+
+  dns_recon:
+    description: "DNS 信息收集 — A/MX/NS/TXT 记录 + WHOIS"
+    params:
+      domain: { type: string, required: true }
+
+  code_audit:
+    description: "Python 代码安全审计 (bandit) — 静态分析安全漏洞"
+    params:
+      path: { type: string, required: true }
+      severity: { type: string, default: "medium" }
+
+  dependency_check:
+    description: "依赖漏洞检查 — 检查 Python 包已知漏洞"
+    params:
+      requirements_path: { type: string, default: "" }
+
+  network_recon:
+    description: "网络侦察 — traceroute + ping"
+    params:
+      target: { type: string, required: true }
+
+  infra_security_check:
+    description: "基础设施安全检查 — 防火墙、端口、SSH、用户权限"
+    params: {}
+
+  full_security_audit:
+    description: "综合安全审计 — 一键执行所有安全扫描并生成报告"
+    params:
+      target: { type: string, default: "localhost" }
+      include_web: { type: boolean, default: false }
+
+cron:
+  - name: "weekly-security-scan"
+    schedule: "0 3 * * 0"
+    action: "full_security_audit"
+    params:
+      target: "localhost"
+      include_web: false
+    description: "每周日凌晨 3 点自动执行安全扫描"

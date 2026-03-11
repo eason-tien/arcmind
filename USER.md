@@ -28,7 +28,7 @@ onboarding_complete: true
 - **主動通知**：允許
 
 ## 子 Agent 偏好
-- **Code Agent**：用戶要求改為 NVIDIA kimi-K2.5 (moonshotai/kimi-k2-instruct)
+- **Code Agent**：用戶要求改為 NVIDIA Llama 3.1 405B (meta/llama-3.1-405b-instruct)
 
 ---
 
