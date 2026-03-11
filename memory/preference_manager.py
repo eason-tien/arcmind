@@ -23,6 +23,7 @@ from typing import Any
 logger = logging.getLogger("arcmind.memory.preference")
 
 _PROFILE_PATH = Path(__file__).parent.parent / "data" / "user_profile.json"
+_FALLBACK_PROFILE_PATH = Path(__file__).parent.parent / "config" / "user_profile.json"
 
 # ── Heuristic Gate ──────────────────────────────────────────────────────────
 
@@ -72,12 +73,22 @@ def _deep_merge(base: dict, update: dict) -> dict:
 
 
 def _load_profile() -> dict:
-    """Load user profile from disk."""
-    if _PROFILE_PATH.exists():
-        try:
-            return json.loads(_PROFILE_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
+    """Load user profile from disk. Falls back to config version if data is corrupted."""
+    for path in (_PROFILE_PATH, _FALLBACK_PROFILE_PATH):
+        if path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, dict) and len(data) > 0:
+                    # If loaded from fallback, heal the primary path
+                    if path == _FALLBACK_PROFILE_PATH:
+                        try:
+                            _save_profile(data)
+                            logger.info("[PreferenceMgr] Healed data/user_profile.json from config fallback")
+                        except Exception:
+                            pass
+                    return data
+            except (json.JSONDecodeError, Exception):
+                continue
     return {}
 
 

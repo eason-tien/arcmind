@@ -838,55 +838,52 @@ class MainLoop:
             else:
                 # ── Chat Mode: single-shot LLM call without any tools ──
                 logger.info("[MainLoop] Chat mode: no tools, lightweight prompt")
-            try:
-                from runtime.model_router import model_router
-
-                # Build lightweight chat system prompt (no TOOLS.md)
                 try:
-                    from persona.loader import persona_loader
-                    soul = persona_loader.get_soul() or ""
-                    user_md = persona_loader.get_user() or ""
-                    chat_system = soul + "\n\n" + user_md
-                except Exception:
-                    chat_system = system  # fallback to full system prompt
+                    from runtime.model_router import model_router
 
-                # Build messages with conversation history
-                chat_messages = []
-                chat_messages.append({"role": "system", "content": chat_system})
-                conv_history = inp.context.get("conversation_history", [])
-                if conv_history:
-                    for turn in conv_history[:-1]:
-                        chat_messages.append({
-                            "role": turn["role"],
-                            "content": turn["content"],
-                        })
-                chat_messages.append({"role": "user", "content": inp.command})
+                    # Build lightweight chat system prompt (no TOOLS.md)
+                    try:
+                        from persona.loader import persona_loader
+                        soul = persona_loader.get_soul() or ""
+                        user_md = persona_loader.get_user() or ""
+                        chat_system = soul + "\n\n" + user_md
+                    except Exception:
+                        chat_system = system  # fallback to full system prompt
 
-                chosen = model_override or model_router.select_model(inp.task_type, inp.budget)[0]
-                provider_name, model_id = model_router._parse_model(chosen)
-                provider = model_router._providers.get(provider_name)
+                    # Build messages with conversation history
+                    chat_messages = []
+                    chat_messages.append({"role": "system", "content": chat_system})
+                    conv_history = inp.context.get("conversation_history", [])
+                    if conv_history:
+                        for turn in conv_history[:-1]:
+                            chat_messages.append({
+                                "role": turn["role"],
+                                "content": turn["content"],
+                            })
+                    chat_messages.append({"role": "user", "content": inp.command})
 
-                if provider:
-                    # Single-shot chat completion without tools
-                    # provider.complete() returns ModelResponse dataclass
-                    # Messages already include system prompt, so pass system=None
-                    resp = provider.complete(
-                        model=model_id,
-                        messages=chat_messages,
-                        system=None,  # system is already in chat_messages[0]
-                        max_tokens=2048,
-                    )
-                    text = _normalize_ml_content(resp.content) if hasattr(resp, 'content') else str(resp)
-                    tokens = resp.total_tokens if hasattr(resp, 'total_tokens') else 0
-                    return {
-                        "success": True,
-                        "output": _strip_think_tags(text) if text else "...",
-                        "tokens": tokens,
-                        "tool_calls": [],
-                    }
-            except Exception as chat_err:
-                logger.warning("[MainLoop] Chat mode failed, falling through to agentic: %s", chat_err)
-            # If chat mode fails, fall through to normal agentic mode below
+                    chosen = model_override or model_router.select_model(inp.task_type, inp.budget)[0]
+                    provider_name, model_id = model_router._parse_model(chosen)
+                    provider = model_router._providers.get(provider_name)
+
+                    if provider:
+                        resp = provider.complete(
+                            model=model_id,
+                            messages=chat_messages,
+                            system=None,
+                            max_tokens=2048,
+                        )
+                        text = _normalize_ml_content(resp.content) if hasattr(resp, 'content') else str(resp)
+                        tokens = resp.total_tokens if hasattr(resp, 'total_tokens') else 0
+                        return {
+                            "success": True,
+                            "output": _strip_think_tags(text) if text else "...",
+                            "tokens": tokens,
+                            "tool_calls": [],
+                        }
+                except Exception as chat_err:
+                    logger.warning("[MainLoop] Chat mode failed, falling through to agentic: %s", chat_err)
+                # If chat mode fails, fall through to normal agentic mode below
 
         # ── Normal task mode: tool filtering + agentic loop ──
         tool_filter = None
@@ -905,6 +902,34 @@ class MainLoop:
                 logger.info("[MainLoop] Tool filter: %s", ", ".join(tool_filter[:5]))
         except Exception:
             pass  # 篩選失敗不影響功能，會使用全部工具
+
+        # ── Gate 閉環: Pre-Gate 檢查 ──
+        _gate_on = False
+        gate_ctx = None
+        try:
+            from config.settings import settings as _s
+            _gate_on = _s.gate_enabled
+        except Exception:
+            pass
+
+        if _gate_on:
+            try:
+                from runtime.gate import pre_gate, GateContext
+                gate_ctx = GateContext(
+                    intent=inp.command,
+                    tool_names=tool_filter or [],
+                    system_snippet=system[:500] if system else "",
+                )
+                pre = pre_gate(gate_ctx)
+                if not pre.ok:
+                    # 擴大工具選擇
+                    logger.info("[Gate] Pre-Gate rejected, expanding tool_filter (top_k=%d→%d)",
+                                gate_ctx.top_k, gate_ctx.top_k + 3)
+                    tool_filter = capability_selector.get_relevant_tool_names(
+                        inp.command, top_k=gate_ctx.top_k + 3)
+            except Exception as _ge:
+                logger.debug("[Gate] Pre-Gate error (disabled): %s", _ge)
+                _gate_on = False  # gate 掛了就關掉，不影響下游
 
         # ── 使用 Agentic Tool Loop（OpenClaw 的核心執行力）──
         try:
@@ -970,9 +995,50 @@ class MainLoop:
                 tool_filter=tool_filter,
             )
             # The agentic_complete function returns a dict, extract its 'content'
+            output_text = _strip_think_tags(result["content"])
+
+            # ── Gate 閉環: Post-Gate 檢查 + 重試 ──
+            if _gate_on and gate_ctx is not None:
+                try:
+                    from runtime.gate import post_gate, apply_feedback, MAX_RETRIES
+
+                    post = post_gate(inp.command, output_text)
+                    while not post.passed and gate_ctx.retry_count < MAX_RETRIES:
+                        if post.failure_type == "leaked_json":
+                            # 機械攔截，直接清掉，不重試主模型
+                            output_text = "我正在處理你的請求，請稍候。"
+                            break
+
+                        # 閉環: Post → Pre 調整 → 重跑主模型
+                        gate_ctx = apply_feedback(gate_ctx, post)
+                        pre = pre_gate(gate_ctx)
+                        if not pre.ok or gate_ctx.extra_constraints:
+                            if post.failure_type == "wrong_skill":
+                                tool_filter = capability_selector.get_relevant_tool_names(
+                                    inp.command, top_k=gate_ctx.top_k)
+                            if gate_ctx.extra_constraints:
+                                system = (system or "") + f"\n[Constraint] {gate_ctx.extra_constraints}"
+
+                        logger.info("[Gate] Retrying main model (attempt %d/%d)",
+                                    gate_ctx.retry_count, MAX_RETRIES)
+                        result = agentic_complete(
+                            prompt=inp.command,
+                            system=system,
+                            task_type=inp.task_type,
+                            budget=inp.budget,
+                            model=model_override,
+                            messages=messages if messages else None,
+                            require_tool_usage=needs_action,
+                            tool_filter=tool_filter,
+                        )
+                        output_text = _strip_think_tags(result["content"])
+                        post = post_gate(inp.command, output_text)
+                except Exception as _ge:
+                    logger.debug("[Gate] Post-Gate error (pass-through): %s", _ge)
+
             return {
                 "success": True,
-                "output": _strip_think_tags(result["content"]),
+                "output": output_text,
                 "tokens": result.get("total_tokens", 0),
                 "tool_calls": result.get("tool_calls", []),
             }

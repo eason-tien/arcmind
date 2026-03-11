@@ -35,7 +35,8 @@ class CLIChannel(Channel):
         logger.info("[CLI] ArcMind CLI started. Type 'exit' to quit.")
 
         print("\n" + "=" * 50)
-        print("  🧠 ArcMind CLI v0.3.0")
+        from version import __version__
+        print(f"  🧠 ArcMind CLI v{__version__}")
         print("  Type /help for commands, 'exit' to quit")
         print("=" * 50 + "\n")
 

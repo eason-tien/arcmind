@@ -194,6 +194,10 @@ class Settings(BaseSettings):
     federation_peers: str = Field(default="", alias="FEDERATION_PEERS")  # 逗號分隔 URLs
     federation_timeout: int = Field(default=120, alias="FEDERATION_TIMEOUT")  # 秒
 
+    # ── Gate (Pre/Post 品質守衛) ────────────────────────────
+    gate_enabled: bool = Field(default=False, alias="GATE_ENABLED")
+    gate_model: str = Field(default="", alias="GATE_MODEL")  # 空 = 用 routing_rules classify/low
+
     # ═══════════════════════════════════════════════════════════
     #  路徑設定
     # ═══════════════════════════════════════════════════════════

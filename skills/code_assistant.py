@@ -244,8 +244,19 @@ class CodeAssistant:
         return f"# 代码生成需要 Ollama 或 API\n# Prompt: {prompt[:100]}..."
     
     def _execute_code(self, code: str, language: str) -> Dict[str, Any]:
-        """执行代码"""
+        """执行代码（含安全检查）"""
         try:
+            # Safety check — reuse code_exec blocklist
+            _BLOCKED_PATTERNS = [
+                "os.system", "subprocess.Popen", "subprocess.call",
+                "socket", "shutil.rmtree", "__import__",
+                "open(", "eval(", "exec(",
+                "importlib", "getattr(__builtins__",
+            ]
+            for pattern in _BLOCKED_PATTERNS:
+                if pattern in code:
+                    return {"error": f"Security: blocked pattern '{pattern}' in LLM-generated code"}
+
             if language in ["python"]:
                 result = subprocess.run(
                     ["python3", "-c", code],

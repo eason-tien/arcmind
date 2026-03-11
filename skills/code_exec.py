@@ -11,11 +11,24 @@ import tempfile
 from pathlib import Path
 
 
-# 禁止的模組（防止惡意操作）
+# 禁止的模式（防止惡意操作 — 多層防護）
 _BLOCKED_IMPORTS = [
-    "os.system", "subprocess.Popen", "subprocess.call",
-    "socket", "shutil.rmtree", "__import__",
-    "open(", "eval(", "exec(",
+    # 系統命令執行
+    "os.system", "os.popen", "os.exec",
+    "subprocess.Popen", "subprocess.call", "subprocess.run",
+    "subprocess.check_output", "subprocess.check_call",
+    # 動態導入 / 反射
+    "__import__", "importlib", "getattr(", "setattr(",
+    # 危險內建
+    "eval(", "exec(", "compile(",
+    # 檔案 / 網路 / 底層
+    "open(", "socket", "ctypes",
+    # 破壞性操作
+    "shutil.rmtree", "os.remove", "os.unlink", "os.rmdir",
+    # 權限提升
+    "__builtins__", "__subclasses__", "__globals__",
+    # 路徑穿越
+    "../",
 ]
 
 # 允許的內建函數（白名單）

@@ -571,29 +571,134 @@ skills:
       - name: executions
         type: array
 
-  - name: security_scan
-    module: security_scan.py
-    handler: full_security_audit
+  - name: claude_bridge
+    module: claude_bridge.py
+    handler: run
     version: "1.0"
-    description: "白帽安全扫描与漏洞评估 — 端口扫描(nmap)、Web漏洞(nikto)、系统审计(lynis)、SSL检测、代码审计(bandit)"
-    permissions: [shell, network, filesystem]
-    tags: [security, scan, vulnerability, audit, pentest, whitehat, nmap, nikto]
+    description: ArcMind 与 Claude CLI 整合桥接 — 直接调用 Claude Code 进行代码辅助
+    permissions: [shell, filesystem]
+    tags: [claude, anthropic, ai, bridge, cli, code]
     governor_required: false
     inputs:
-      - name: target
+      - name: task
+        type: string
+        required: true
+        description: 任务描述（将发送给 Claude CLI）
+      - name: cwd
         type: string
         required: false
-        default: "localhost"
-        description: "扫描目标 IP 或域名"
-      - name: include_web
-        type: bool
+        description: 工作目录（默认当前目录）
+      - name: timeout
+        type: int
         required: false
-        default: false
-        description: "是否包含 Web 漏洞扫描"
+        default: 600
+        description: 超时秒数（默认 10 分钟）
+      - name: extra_args
+        type: array
+        required: false
+        description: 额外参数列表
+      - name: task_id
+        type: string
+        required: false
+        description: 任务ID
     outputs:
-      - name: summary
-        type: dict
-        description: "审计摘要"
-      - name: report_path
+      - name: stdout
         type: string
-        description: "报告文件路径"
+        description: Claude CLI 标准输出
+      - name: stderr
+        type: string
+        description: Claude CLI 标准错误
+      - name: exit_code
+        type: int
+        description: 退出码
+      - name: task_id
+        type: string
+        description: 任务ID
+
+  - name: claude_status
+    module: claude_bridge.py
+    handler: status
+    version: "1.0"
+    description: 检查 Claude CLI 登录状态和版本信息
+    permissions: [shell]
+    tags: [claude, anthropic, status, monitor]
+    governor_required: false
+    inputs: []
+    outputs:
+      - name: installed
+        type: bool
+        description: Claude CLI 是否已安装
+      - name: logged_in
+        type: bool
+        description: 是否已登录
+      - name: version
+        type: string
+        description: 版本号
+      - name: path
+        type: string
+        description: 安装路径
+
+  - name: security_scan
+    module: security_scan.py
+    handler: invoke
+    version: "1.0.0"
+    description: "白帽安全掃描與漏洞評估 — 端口掃描(nmap)、Web漏洞(nikto)、系統審計(lynis)、SSL檢測、代碼審計(bandit)、依賴檢查"
+    permissions: [shell, network]
+    tags: [security, scan, vulnerability, audit, nmap, nikto, pentest]
+    governor_required: true
+    inputs:
+      - name: action
+        type: string
+        required: true
+        description: "port_scan | web_vuln_scan | system_audit | ssl_check | dns_recon | code_audit | dependency_check | network_recon | infra_security_check | full_security_audit"
+      - name: params
+        type: dict
+        required: false
+        description: "動作參數（target, scan_type, domain, path, severity 等）"
+    outputs:
+      - name: result
+        type: dict
+        description: 掃描結果
+
+  - name: video_generator
+    module: video_generator.py
+    handler: handler
+    version: "1.0.0"
+    description: "短视频自动生成器 - 文案→语音→视频成品，支持 MiniMax TTS + FFmpeg 合成"
+    permissions: [filesystem, network, shell]
+    tags: [video, tts, minimax, content creation, social media, generator]
+    governor_required: false
+    inputs:
+      - name: action
+        type: string
+        required: false
+        default: "generate"
+        description: "generate (生成视频) | list (列出已生成视频)"
+      - name: topic
+        type: string
+        required: false
+        default: "AI工具推荐"
+        description: "视频主题"
+      - name: style
+        type: string
+        required: false
+        default: "知识分享"
+        description: "视频风格: 知识分享/创业分享/情感/搞笑"
+      - name: voice
+        type: string
+        required: false
+        default: "male-qn-qingse"
+        description: "语音音色: male-qn-qingse/female-shaonv"
+    outputs:
+      - name: success
+        type: bool
+      - name: output
+        type: object
+      - name: video_path
+        type: string
+      - name: audio_path
+        type: string
+      - name: script
+        type: object
+      - name: duration
+        type: string

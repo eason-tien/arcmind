@@ -27,17 +27,18 @@ from pathlib import Path
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any
-import threading
+from typing import Any, Dict, List, Optional
 
 from version import __version__ as _arcmind_version
-from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, UploadFile, File, APIRouter
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, APIRouter, Depends, BackgroundTasks, File, UploadFile
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from runtime.event_bus import event_bus, Event, EventType
 from gateway.session_manager import session_manager, SessionContext
+from channels.supervisor import channel_supervisor
 from gateway.router import (
     InboundMessage, OutboundMessage,
     message_router, RouteAction,
@@ -99,27 +100,50 @@ class DeliveryQueue:
     def __init__(self):
         self._queues: dict[str, asyncio.Queue] = {}
         self._callbacks: dict[str, list] = defaultdict(list)
+        # Store the main FastAPI loop so we can enqueue from background threads safely
+        self._main_loop: asyncio.AbstractEventLoop | None = None
+
+    def _ensure_main_loop(self):
+        if self._main_loop is None:
+            self._main_loop = asyncio.get_running_loop()
 
     def get_queue(self, session_id: str) -> asyncio.Queue:
+        self._ensure_main_loop()
         if session_id not in self._queues:
             self._queues[session_id] = asyncio.Queue()
         return self._queues[session_id]
 
     async def put(self, msg: OutboundMessage) -> None:
-        """Enqueue a response for delivery."""
+        """Enqueue a response for delivery. Safe to call from worker threads."""
+        self._ensure_main_loop()
         q = self.get_queue(msg.session_id)
-        await q.put(msg)
+        
+        current_loop = None
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pass
 
-        # Also notify registered callbacks (for Telegram, etc.)
+        if current_loop is self._main_loop:
+            await q.put(msg)
+            self._dispatch_callbacks(msg)
+        elif self._main_loop is not None:
+            # We are in a different thread/loop (e.g., EventBus worker)
+            asyncio.run_coroutine_threadsafe(q.put(msg), self._main_loop)
+            self._main_loop.call_soon_threadsafe(self._dispatch_callbacks, msg)
+
+    def _dispatch_callbacks(self, msg: OutboundMessage):
         for cb in self._callbacks.get(msg.session_id, []):
             try:
-                await cb(msg)
+                # Assuming callbacks are async functions
+                asyncio.create_task(cb(msg))
             except Exception as e:
                 logger.warning("[DeliveryQueue] callback error for %s: %s",
                                msg.session_id, e)
 
     async def get(self, session_id: str, timeout: float = 30.0) -> OutboundMessage | None:
         """Wait for next response message."""
+        self._ensure_main_loop()
         q = self.get_queue(session_id)
         try:
             return await asyncio.wait_for(q.get(), timeout=timeout)
@@ -141,8 +165,49 @@ class DeliveryQueue:
         self._queues.pop(session_id, None)
         self._callbacks.pop(session_id, None)
 
+    async def get_any(self, timeout: float = 1.0) -> OutboundMessage | None:
+        """Wait for next response message from ANY active session queue."""
+        self._ensure_main_loop()
+        # Check all queues round-robin or randomly
+        for session_id, q in list(self._queues.items()):
+            try:
+                # Use get_nowait to not block
+                msg = q.get_nowait()
+                # Automatically cleanup empty queues if needed
+                return msg
+            except asyncio.QueueEmpty:
+                continue
+        # If all empty, sleep
+        await asyncio.sleep(timeout)
+        return None
 
 delivery_queue = DeliveryQueue()
+
+# ── Global Delivery Worker ──────────────────────────────────────────────────
+async def _delivery_worker():
+    """Background task that constantly drains the DeliveryQueue and sends out messages."""
+    logger.info("[DeliveryWorker] Started polling for outgoing messages")
+    while True:
+        try:
+            msg = await delivery_queue.get_any(timeout=0.5)
+            if not msg:
+                continue
+                
+            # If the user is on Telegram, send to Telegram via supervisor
+            if msg.channel == "telegram":
+                for handler in channel_supervisor._channels:
+                    if handler.name == "Telegram" and handler.enabled:
+                        asyncio.create_task(handler.send(msg))
+                        break
+
+            # CLI or other channels can also be routed here
+
+        except asyncio.CancelledError:
+            logger.info("[DeliveryWorker] Shutting down")
+            break
+        except Exception as e:
+            logger.exception("[DeliveryWorker] Error: %s", e)
+            await asyncio.sleep(1)
 
 
 # ── Message Processing Pipeline ─────────────────────────────────────────────
@@ -169,18 +234,8 @@ async def process_message(msg: InboundMessage) -> OutboundMessage:
         user_id=msg.user_id,
     )
 
-    # 2. Record user turn
+    # 2. Record user turn (session history only; episodic memory written by LEARN phase in main_loop)
     session_manager.add_turn(msg.session_id, "user", msg.text)
-    # Persist to MySQL episodic memory
-    try:
-        from memory.memory_store import memory_store
-        memory_store.add_episodic(
-            content=f"[用戶] {msg.text[:500]}",
-            source=msg.channel or "telegram",
-            session_id=msg.session_id,
-        )
-    except Exception:
-        pass
 
     # 3. Route
     route = message_router.route(msg, {
@@ -203,18 +258,8 @@ async def process_message(msg: InboundMessage) -> OutboundMessage:
 
     elapsed = time.monotonic() - t0
 
-    # 5. Record assistant turn
+    # 5. Record assistant turn (session history only; episodic memory written by LEARN phase in main_loop)
     session_manager.add_turn(msg.session_id, "assistant", response_text)
-    # Persist to MySQL episodic memory
-    try:
-        from memory.memory_store import memory_store
-        memory_store.add_episodic(
-            content=f"[助理] {response_text[:500]}",
-            source="agent",
-            session_id=msg.session_id,
-        )
-    except Exception:
-        pass
 
     logger.info("[Gateway] %s → %s (%.2fs, route=%s, agent=%s)",
                 msg.session_id, msg.text[:40], elapsed,
@@ -228,8 +273,10 @@ async def process_message(msg: InboundMessage) -> OutboundMessage:
         metadata={"elapsed_s": round(elapsed, 3)},
     )
 
-    # Enqueue for delivery
-    await delivery_queue.put(response)
+    # Enqueue for delivery only if we have a synchronous text response.
+    # EventBus-driven async tasks will return "" and enqueue real responses later.
+    if response_text:
+        await delivery_queue.put(response)
 
     return response
 
@@ -407,65 +454,6 @@ async def _handle_system_command(command: str, ctx: SessionContext) -> str:
 
 # ── Agent Task Handler ──────────────────────────────────────────────────────
 
-
-STALL_TIMEOUT = 300  # 5 minutes with no heartbeat = stalled
-
-
-async def _run_with_heartbeat_monitor(loop_input, main_loop):
-    """Run agent task with heartbeat monitoring. No hard timeout.
-
-    Instead of killing after N seconds, we:
-    1. Let the agent run as long as it needs
-    2. Check heartbeat every 30s
-    3. Only cancel if NO heartbeat update for 5 minutes (= genuinely stuck)
-    """
-    from runtime.tool_loop import get_heartbeat_by_thread, clear_heartbeat_by_thread
-
-    loop = asyncio.get_event_loop()
-    thread_id_future = loop.create_future()
-
-    def _run_in_thread():
-        tid = threading.get_ident()
-        loop.call_soon_threadsafe(thread_id_future.set_result, tid)
-        return main_loop.run(loop_input)
-
-    task = asyncio.create_task(asyncio.to_thread(_run_in_thread))
-
-    # Wait for thread ID (max 10s)
-    try:
-        thread_id = await asyncio.wait_for(thread_id_future, timeout=10)
-    except asyncio.TimeoutError:
-        logger.warning("[Gateway] Could not get thread ID, running without monitoring")
-        return await task
-
-    # Monitor heartbeat
-    while not task.done():
-        await asyncio.sleep(30)
-        if task.done():
-            break
-
-        hb = get_heartbeat_by_thread(thread_id)
-        if hb:
-            import time as _time
-            stall = _time.time() - hb["ts"]
-            if stall > STALL_TIMEOUT:
-                logger.error(
-                    "[Gateway] Agent stalled: no activity for %.0fs, "
-                    "iteration=%d, last_action=%s — cancelling",
-                    stall, hb["iteration"], hb["action"]
-                )
-                task.cancel()
-                try:
-                    await task
-                except (asyncio.CancelledError, Exception):
-                    pass
-                clear_heartbeat_by_thread(thread_id)
-                return None  # Signal: stalled
-
-    clear_heartbeat_by_thread(thread_id)
-    return task.result()
-
-
 async def _handle_agent_task(
     msg: InboundMessage,
     ctx: SessionContext,
@@ -484,18 +472,14 @@ async def _handle_agent_task(
             else:
                 return handler(msg, ctx)
 
-        # Fallback: direct OODA loop call
-        from loop.main_loop import main_loop, LoopInput
-
-        # Build session context with conversation history for continuity
+        # Prepare context for the event handler
+        # Includes recent conversation history so LLM has context
         session_context = {
             "session_id": ctx.session_id,
             "agent_type": ctx.agent_type,
             "state": ctx.state,
             "channel": ctx.channel,
         }
-
-        # Include recent conversation history so LLM has context
         recent_turns = ctx.get_recent_history(20)
         if recent_turns:
             session_context["conversation_history"] = [
@@ -511,29 +495,33 @@ async def _handle_agent_task(
         if output_mode:
             session_context["output_mode"] = output_mode
 
+        # ── Run OODA loop synchronously for all channels ──
+        # This ensures callers (REST, Telegram, CLI) get the result directly.
+        # Telegram benefits from this because typing indicators stay active
+        # while the OODA loop processes.
+        from loop.main_loop import main_loop, LoopInput
         loop_input = LoopInput(
             command=msg.text,
             source=msg.channel,
-            session_id=None,  # DB task ID, not session
+            session_id=session_context.get("session_id") or msg.session_id,
             task_type="general",
             context=session_context,
-            model_hint=model_override or None,
+            model_hint=msg.metadata.get("model_override") or None,
         )
-
-        result = await _run_with_heartbeat_monitor(loop_input, main_loop)
-
-        # Stall detected
-        if result is None:
-            return "⚠️ Agent 停滞超过5分钟无活动，已自动终止。请重试或拆分任务。"
-
-        # Record token usage
-        if result.tokens_used:
-            session_manager.consume_tokens(ctx.session_id, result.tokens_used)
-
-        if result.success:
-            return str(result.output) if result.output else "✅ 完成。"
-        else:
-            return f"❌ 執行失敗: {result.error or '未知錯誤'}"
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(main_loop.run, loop_input),
+                timeout=300,
+            )
+            if result.tokens_used:
+                session_manager.consume_tokens(msg.session_id, result.tokens_used)
+            if result.success:
+                return str(result.output) if result.output else ""
+            else:
+                return f"❌ 執行失敗: {result.error or 'Unknown error'}"
+        except (asyncio.TimeoutError, TimeoutError):
+            logger.error("[Gateway] OODA loop timed out (300s): %s", msg.text[:80])
+            return "❌ 系統錯誤: 請求處理超時（5分鐘），請簡化指令或稍後重試。"
 
     except Exception as e:
         logger.exception("[Gateway/REST] error processing message: %s", e)
@@ -770,6 +758,55 @@ async def chat_endpoint(req: ChatRequest):
 
 # NOTE: Duplicate /v1/chat/audio endpoint removed — see the first definition above.
 
+
+# ── n8n Webhook Integrations ────────────────────────────────────────────────
+
+class N8nVideoRequest(BaseModel):
+    title: str
+    topic: Optional[str] = None
+    webhook_id: Optional[str] = None
+    
+@router.post("/v1/n8n/video_webhook")
+async def n8n_video_webhook(req: N8nVideoRequest, background_tasks: BackgroundTasks):
+    """
+    Webhook endpoint for n8n to trigger the Automated Short Video Pipeline.
+    This creates a database entry in video_db, and emits a TASK_CREATED event for the PM agent
+    to begin writing the script and generating prompts.
+    """
+    try:
+        from runtime.video_db import create_task
+        task_id = create_task(
+            title=req.title,
+            topic=req.topic,
+            n8n_webhook_id=req.webhook_id
+        )
+        logger.info(f"[n8n Webhook] Created Video Task #{task_id}: '{req.title}'")
+
+        # Emit an event to wake up the PM or Script Agent to start the workflow
+        from runtime.event_bus import event_bus, Event, EventType
+        from runtime.lifecycle import lifecycle
+        
+        # We wrap this in an internal Lifecycle Task so the Agent knows what to do
+        internal_task_id = lifecycle.tasks.create(
+            title=f"Generate a short video script and ComfyUI prompts for the topic: '{req.title}'. Video Task ID: {task_id}",
+            assigned_to="pm",   # PM agent handles the scripting and orchestration
+            parent_task_id=None
+        )
+        
+        event_bus.emit(Event(
+            type=EventType.TASK_CREATED,
+            source="webhook:n8n",
+            payload={
+                "task_id": internal_task_id,
+                "assigned_to": "pm",
+                "description": f"Execute Video Pipeline Task #{task_id} for topic: {req.title}"
+            }
+        ))
+        
+        return {"status": "accepted", "video_task_id": task_id, "internal_task_id": internal_task_id}
+    except Exception as e:
+        logger.exception("[n8n Webhook] Error triggering video pipeline")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ── Gateway Status & Sync ───────────────────────────────────────────────────
 

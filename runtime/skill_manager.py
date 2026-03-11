@@ -52,6 +52,8 @@ class SkillManager:
             self._load_from_manifest(manifest_path)
         else:
             logger.warning("No __manifest__.yaml found in skills/. Scanning .py files.")
+            import skills.comfyui
+            import skills.ffmpeg
             self._scan_skills_dir()
 
     def _load_from_manifest(self, manifest_path: Path) -> None:

@@ -30,6 +30,7 @@ class PersonaLoader:
     # Default persona file names
     PERSONA_FILES = {
         "soul": "SOUL.md",
+        "soul_compact": "SOUL_COMPACT.md",
         "agents": "AGENTS.md",
         "tools": "TOOLS.md",
         "user": "USER.md",           # Optional: user preferences
@@ -84,7 +85,11 @@ class PersonaLoader:
                 result[name] = content
         return result
 
-    def get_soul(self) -> str:
+    def get_soul(self, compact: bool = False) -> str:
+        if compact:
+            result = self.load("soul_compact")
+            if result:
+                return result
         return self.load("soul")
 
     def get_agents(self) -> str:

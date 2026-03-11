@@ -43,6 +43,29 @@ class WorkingMemory:
         with _lock:
             return self._summaries.get(task_id, "")
 
+    def get_context(self, task_id: str) -> str:
+        """
+        Return a formatted context string from working memory.
+        Used by OODA OBSERVE phase to inject recent task state.
+        Returns empty string if no working memory exists.
+        """
+        with _lock:
+            items = self._tasks.get(task_id, [])
+            summary = self._summaries.get(task_id, "")
+
+        if not items and not summary:
+            return ""
+
+        parts = []
+        if summary:
+            parts.append(f"[先前摘要] {summary}")
+        for it in items[-5:]:  # last 5 items only
+            kind = it.get("kind", "observation")
+            content = it.get("content", "")
+            parts.append(f"[{kind}] {content}")
+
+        return "\n".join(parts)
+
     def clear(self, task_id: str) -> None:
         with _lock:
             self._tasks.pop(task_id, None)

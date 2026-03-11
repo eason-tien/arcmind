@@ -1,48 +1,14 @@
-# ArcMind dependencies
+# 🎬 Video Production Requirements
 
-# Web framework
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
+# Python dependencies for video compilation
+moviepy>=1.0.3
+Pillow>=9.0.0
 
-# HTTP client
-httpx>=0.27.0
+# Optional: For more advanced animations
+# manim>=0.17.0
 
-# Database
-sqlalchemy>=2.0.0
+# For audio processing (optional)
+# pydub>=0.25.1
 
-# ═══════════════════════════════════════════
-#  AI Provider SDKs
-#  安裝全部，不用的 provider 不設 key 即可
-# ═══════════════════════════════════════════
-
-# Anthropic (Claude)
-anthropic>=0.40.0
-
-# OpenAI-compatible (OpenAI / Groq / Mistral / OLLAMA / etc.)
-openai>=1.40.0
-
-# Google Gemini
-google-generativeai>=0.8.0
-
-# Scheduling
-apscheduler>=3.10.0
-
-# Config
-pydantic>=2.0.0
-pydantic-settings>=2.0.0
-python-dotenv>=1.0.0
-
-# YAML
-pyyaml>=6.0.0
-
-# Browser automation (run: playwright install chromium)
-playwright>=1.45.0
-
-# Logging
-structlog>=24.0.0
-
-# Web search built-in skill
-ddgs>=9.0.0
-
-# Utilities
-python-dateutil>=2.9.0
+# Install with:
+# pip install -r requirements.txt

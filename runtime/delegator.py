@@ -523,6 +523,20 @@ class Delegator:
             content = result.get("content", "")
             content = re.sub(r"<think>[\s\S]*?</think>\s*", "", content).strip()
 
+            # Empty output after stripping think tags = effectively failed
+            if not content:
+                elapsed = time.time() - t0
+                logger.warning("[Delegator] Agent '%s' returned empty output, treating as failure",
+                               match.agent_id)
+                return {
+                    "success": False,
+                    "output": "",
+                    "agent_id": match.agent_id,
+                    "error": "Agent returned empty output",
+                    "elapsed_s": round(elapsed, 2),
+                    "delegated": True,
+                }
+
             return {
                 "success": True,
                 "output": content,
@@ -635,11 +649,10 @@ class Delegator:
         # Aggregate
         total_tokens = sum(r.get("tokens", 0) for r in results)
         total_elapsed = sum(r.get("elapsed_s", 0) for r in results)
-        # Use the best (longest successful) output, not just the last step
-        # This prevents a failed/empty later step from overriding a good earlier result
+        # Use the last successful output (most refined result in a sequential pipeline)
         successful_outputs = [r.get("output", "") for r in results if r.get("success") and r.get("output")]
         if successful_outputs:
-            final_output = max(successful_outputs, key=len)
+            final_output = successful_outputs[-1]
         else:
             final_output = results[-1].get("output", "") if results else ""
         all_success = all(r.get("success") for r in results)

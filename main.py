@@ -16,18 +16,45 @@ from __future__ import annotations
 
 import argparse
 import logging
+import logging.handlers
 import sys
+from pathlib import Path
 
 import uvicorn
 
 from config.settings import settings
 
+LOG_DIR = Path(__file__).parent / "logs"
+
 
 def setup_logging() -> None:
+    LOG_DIR.mkdir(exist_ok=True)
+
+    fmt = "%(asctime)s [%(levelname)s] %(name)s — %(message)s"
+    formatter = logging.Formatter(fmt)
+
+    # Rotating file handler: 5 MB per file, keep 3 backups
+    file_handler = logging.handlers.RotatingFileHandler(
+        LOG_DIR / "arcmind.log",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(formatter)
+
+    handlers: list[logging.Handler] = [file_handler]
+
+    # Console handler — only when running in a real terminal (not daemon/launchd).
+    # Under launchd, stdout may be redirected to the same log file, causing duplicates.
+    if sys.stdout.isatty():
+        console = logging.StreamHandler(sys.stdout)
+        console.setFormatter(formatter)
+        handlers.append(console)
+
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)],
+        format=fmt,
+        handlers=handlers,
     )
 
 
@@ -75,6 +102,7 @@ def main() -> None:
         port=args.port,
         reload=args.reload,
         log_level="info",
+        log_config=None,  # Prevent uvicorn from adding duplicate handlers to root logger
     )
 
 

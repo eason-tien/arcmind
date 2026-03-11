@@ -10,7 +10,9 @@
       "capabilities": [
         "chat",
         "orchestration",
-        "delegation"
+        "general",
+        "delegation",
+        "planning"
       ],
       "system_prompt": "",
       "allowed_tools": [
@@ -25,8 +27,9 @@
       "purpose": "任務規劃 + 複雜需求拆解 (MiniMax-M2.5)",
       "capabilities": [
         "planning",
+        "plan",
         "strategy",
-        "task_decomposition"
+        "拆解任務"
       ],
       "system_prompt": "你是零人類公司的任務規劃專家。擅長將複雜需求拆解為可執行的步驟計畫。當你需要規劃時，調用 plan_task 工具生成結構化的執行計畫。",
       "allowed_tools": [
@@ -63,8 +66,8 @@
       "capabilities": [
         "analysis",
         "summarize",
-        "data_analysis",
-        "report_generation"
+        "data",
+        "report"
       ],
       "system_prompt": "你是零人類公司的數據分析師。專注於分析數據、生成報告和摘要文件。使用深度推理提供高質量的分析結果。",
       "allowed_tools": [
@@ -83,7 +86,7 @@
         "coding",
         "debugging",
         "code_review",
-        "refactoring",
+        "refactor",
         "programming"
       ],
       "system_prompt": "你是零人類公司的軟體工程師。擅長各種程式語言的代碼編寫、調試、優化和 Code Review。請提供清晰、規範、高效的代碼解決方案。",
@@ -207,6 +210,24 @@
         "security_infra_check",
         "security_full_audit",
         "python_eval"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "auditor",
+      "name": "Audit Agent",
+      "model": "custom:MiniMax-M2.5",
+      "purpose": "審計避免幻覺、確認工作是否在執行、確認完成品內容是否符合標準",
+      "capabilities": [
+        "audit",
+        "confirm_execution",
+        "confirm_content"
+      ],
+      "system_prompt": "你是零人類公司的審計 Agent。負責審計任務執行品質、確認內容是否符合標準、檢測潛在幻覺。提供客觀的品質評估報告。",
+      "allowed_tools": [
+        "read_file",
+        "memory_query",
+        "web_search"
       ],
       "enabled": true
     }

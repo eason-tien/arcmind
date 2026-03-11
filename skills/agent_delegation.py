@@ -42,6 +42,15 @@ def delegate_task(inputs: dict) -> dict:
     if not assignee or not title:
         return {"error": "assignee and title are required fields."}
 
+    import json
+    if isinstance(task_data, str):
+        try:
+            task_data = json.loads(task_data)
+        except json.JSONDecodeError:
+            task_data = {"instructions": task_data}
+    if not isinstance(task_data, dict):
+        task_data = {"data": str(task_data)}
+
     persona = agent_registry.get(assignee)
     if not persona:
         valid_roles = ", ".join(agent_registry.list_roles())
@@ -72,6 +81,19 @@ def delegate_task(inputs: dict) -> dict:
             },
             task_id=str(sub_task_id),
         )
+
+        # ── HYBRID DRIVEN: Emit TASK_CREATED to instantly wake up sub-agent ──
+        from runtime.event_bus import event_bus, Event, EventType
+        event_bus.emit(Event(
+            type=EventType.TASK_CREATED,
+            source="skill:agent_delegation",
+            payload={
+                "task_id": sub_task_id,
+                "assigned_to": assignee,
+                "description": title,
+                "parent_task_id": parent_task_id
+            }
+        ))
 
         logger.info("Task %s delegated to %s (parent=%s, priority=%s)",
                      sub_task_id, assignee, parent_task_id, priority)
@@ -178,6 +200,23 @@ def delegate_multi(inputs: dict) -> dict:
             "steps": steps,
             "step_task_ids": step_task_ids,
         })
+
+        # ── HYBRID DRIVEN: Emit TASK_CREATED for the FIRST step only ──
+        # (Subsequent steps should be chained automatically by a completion handler, 
+        # but for now, we kick off step 0)
+        from runtime.event_bus import event_bus, Event, EventType
+        if step_task_ids and steps:
+            first_step = steps[0]
+            event_bus.emit(Event(
+                type=EventType.TASK_CREATED,
+                source="skill:agent_delegation",
+                payload={
+                    "task_id": step_task_ids[0],
+                    "assigned_to": first_step["assignee"],
+                    "description": first_step.get("instruction", title),
+                    "parent_task_id": pipeline_task_id
+                }
+            ))
 
         logger.info("Pipeline %s created: %d steps, tasks=%s",
                      pipeline_task_id, len(steps), step_task_ids)

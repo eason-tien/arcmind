@@ -34,9 +34,20 @@ class PersonaInjector:
         context_summary: str = "",
         extra_instructions: str = "",
         agent_type: str = "main",
+        compact: bool = True,
     ) -> str:
         """
         Build the complete system prompt with layered injection.
+
+        compact=True (default):
+          - SOUL_COMPACT.md (~800 chars) instead of full SOUL.md (9KB)
+          - NO TOOLS.md (19KB) — tools exposed via function calling schema
+          - NO AGENTS.md (9KB) — delegation handled by Delegator system
+          Total: ~2-4KB instead of 37KB+
+
+        compact=False:
+          - Legacy mode: full SOUL + AGENTS + TOOLS (37KB)
+          - Only used when explicitly requested
 
         Returns:
             Full system prompt string.
@@ -44,19 +55,20 @@ class PersonaInjector:
         sections = []
 
         # Layer 1: SOUL (identity foundation)
-        soul = self.loader.get_soul()
+        soul = self.loader.get_soul(compact=compact)
         if soul:
             sections.append(soul)
 
-        # Layer 2: AGENTS (behavioral rules)
-        agents = self.loader.get_agents()
-        if agents:
-            sections.append(agents)
+        if not compact:
+            # Layer 2: AGENTS (behavioral rules) — only in full mode
+            agents = self.loader.get_agents()
+            if agents:
+                sections.append(agents)
 
-        # Layer 3: TOOLS (environment/capabilities)
-        tools = self.loader.get_tools()
-        if tools:
-            sections.append(tools)
+            # Layer 3: TOOLS (environment/capabilities) — only in full mode
+            tools = self.loader.get_tools()
+            if tools:
+                sections.append(tools)
 
         # Layer 4: USER (user preferences)
         user = self.loader.get_user()
@@ -79,8 +91,8 @@ class PersonaInjector:
 
         prompt = "\n\n---\n\n".join(sections)
 
-        logger.debug("[PersonaInjector] built system prompt: %d chars, %d layers",
-                      len(prompt), len(sections))
+        logger.debug("[PersonaInjector] built system prompt: %d chars, %d layers, compact=%s",
+                      len(prompt), len(sections), compact)
         return prompt
 
     def build_messages(

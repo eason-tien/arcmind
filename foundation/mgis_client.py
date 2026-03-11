@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any, Optional
 
 import httpx
@@ -13,6 +14,9 @@ import httpx
 from config.settings import settings
 
 logger = logging.getLogger("arcmind.mgis_client")
+
+# Suppress repeated MGIS offline warnings — log once per interval
+_MGIS_OFFLINE_LOG_INTERVAL = 300  # seconds
 
 
 class MGISError(Exception):
@@ -37,6 +41,14 @@ class MGISClient:
             self._headers["X-API-Key"] = settings.mgis_api_key
         if settings.mgis_admin_token:
             self._headers["Authorization"] = f"Bearer {settings.mgis_admin_token}"
+        self._last_offline_log: float = 0.0
+
+    def _log_offline(self, msg: str, *args) -> None:
+        """Log MGIS unreachable at most once per interval to avoid spam."""
+        now = time.monotonic()
+        if now - self._last_offline_log >= _MGIS_OFFLINE_LOG_INTERVAL:
+            logger.warning(msg, *args)
+            self._last_offline_log = now
 
     # ── 底層請求 ──────────────────────────────────────────────────────────────
 
@@ -47,13 +59,14 @@ class MGISClient:
                           timeout=min(settings.mgis_timeout, 30))
             if r.status_code >= 400:
                 raise MGISError(r.status_code, r.text[:512])
+            self._last_offline_log = 0.0  # reset on success
             try:
                 return r.json()
             except (ValueError, json.JSONDecodeError):
                 logger.warning("MGIS returned non-JSON response for %s", path)
                 return {"error": "Invalid JSON response", "offline": True}
         except httpx.RequestError as e:
-            logger.warning("MGIS unreachable: %s", e)
+            self._log_offline("MGIS unreachable: %s", e)
             return {"error": str(e), "offline": True}
 
     def _post(self, path: str, body: dict) -> dict:
@@ -63,13 +76,14 @@ class MGISClient:
                            timeout=min(settings.mgis_timeout, 30))
             if r.status_code >= 400:
                 raise MGISError(r.status_code, r.text[:512])
+            self._last_offline_log = 0.0  # reset on success
             try:
                 return r.json()
             except (ValueError, json.JSONDecodeError):
                 logger.warning("MGIS returned non-JSON response for %s", path)
                 return {"error": "Invalid JSON response", "offline": True}
         except httpx.RequestError as e:
-            logger.warning("MGIS unreachable: %s", e)
+            self._log_offline("MGIS unreachable: %s", e)
             return {"error": str(e), "offline": True}
 
     # ── Health ────────────────────────────────────────────────────────────────

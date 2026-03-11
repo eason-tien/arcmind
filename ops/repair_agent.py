@@ -31,7 +31,7 @@ _ARCMIND_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _CONFIG_DIR  = _ARCMIND_DIR / "config"
 _LOGS_DIR    = _ARCMIND_DIR / "logs"
 _ERR_LOG     = _LOGS_DIR / "arcmind_err.log"
-_PORT        = 8100
+_PORT        = int(os.getenv("ARCMIND_PORT", "8100"))
 _MAX_LOG_MB  = 100
 
 
@@ -169,17 +169,28 @@ def _check_import_errors(result: RepairResult) -> None:
             result.add("imports", "OK")
             return
 
+        # 安全白名單：只允許安裝已知安全的 Python 模組
+        _SAFE_MODULES = {
+            "anthropic", "openai", "httpx", "pydantic", "pydantic_settings",
+            "uvicorn", "fastapi", "starlette", "yaml", "pyyaml", "dotenv",
+            "python-dotenv", "chromadb", "apscheduler", "requests", "aiohttp",
+            "websockets", "psutil", "tiktoken", "numpy", "pillow", "PIL",
+            "edge_tts", "telegram", "python-telegram-bot",
+        }
         pip = str(_ARCMIND_DIR / ".venv" / "bin" / "pip")
         installed = []
         for mod in missing:
+            if mod.lower() not in _SAFE_MODULES:
+                logger.warning("[Repair] Skipping unknown module '%s' (not in safe list)", mod)
+                continue
             try:
                 subprocess.run(
-                    [pip, "install", mod],
-                    capture_output=True, timeout=60,
+                    [pip, "install", "--no-deps", mod],
+                    capture_output=True, timeout=120,
                 )
                 installed.append(mod)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("[Repair] Failed to install '%s': %s", mod, e)
 
         if installed:
             result.add("imports", "REPAIRED", f"安裝: {', '.join(installed)}")
@@ -269,14 +280,20 @@ def _check_env(result: RepairResult) -> None:
 
 def backup_configs() -> None:
     """Backup current configs (called when system is healthy)."""
-    # JSON configs
+    # JSON & YAML configs
     if _CONFIG_DIR.exists():
-        for jf in _CONFIG_DIR.glob("*.json"):
+        for fpath in _CONFIG_DIR.glob("*.*"):
+            if fpath.suffix not in [".json", ".yaml", ".yml"]:
+                continue
             try:
-                with open(jf, "r", encoding="utf-8") as f:
-                    json.load(f)  # Validate before backing up
-                bak = jf.with_suffix(".json.bak")
-                shutil.copy2(jf, bak)
+                # Valid size check: file must not be practically empty
+                if fpath.stat().st_size < 10:
+                    continue
+                if fpath.suffix == ".json":
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        json.load(f)  # Validate JSON before backing up
+                bak = fpath.with_suffix(fpath.suffix + ".bak")
+                shutil.copy2(fpath, bak)
             except Exception:
                 pass
 
@@ -284,7 +301,11 @@ def backup_configs() -> None:
     env_file = _ARCMIND_DIR / ".env"
     if env_file.exists():
         try:
-            shutil.copy2(env_file, _ARCMIND_DIR / ".env.bak")
+            # Prevent backing up an empty or corrupted .env file
+            content = env_file.read_text(encoding="utf-8")
+            valid_lines = [l for l in content.split("\n") if "=" in l and not l.strip().startswith("#")]
+            if len(valid_lines) > 0 and len(content.strip()) > 10:
+                shutil.copy2(env_file, _ARCMIND_DIR / ".env.bak")
         except Exception:
             pass
 

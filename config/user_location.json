@@ -1,12 +1,7 @@
 {
-  "city": "Pattaya",
-  "region": "Chonburi",
-  "country": "Thailand",
-  "lat": 12.93,
-  "lon": 100.88,
-  "note": "用户在泰国芭提雅",
-  "latitude": 13.289599,
-  "longitude": 101.439776,
-  "location_name": "Pattaya, Chonburi, Thailand",
-  "timezone": "Asia/Bangkok"
+  "city": "大溪",
+  "region": "桃園",
+  "country": "Taiwan",
+  "lat": 24.88,
+  "lon": 121.28
 }

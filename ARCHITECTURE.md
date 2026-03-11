@@ -1,5 +1,5 @@
 # ArcMind — Architecture Document
-> Version: 0.2
+> Version: 0.7.0
 > Author: Eason
 > Status: 定義中（架構轉向）
 

@@ -96,7 +96,7 @@ class AnthropicProvider(BaseProvider):
         import anthropic as _anthropic
         self._client = _anthropic.Anthropic(
             api_key=settings.anthropic_api_key,
-            timeout=90.0,  # 90s — 比默認 600s 合理得多
+            timeout=600.0,  # 600s — 適配慢速 API
         )
 
     def complete(self, model: str, messages: list[dict],
@@ -140,7 +140,7 @@ class OpenAICompatibleProvider(BaseProvider):
         #   connect: 連線建立不應超過 10s（網路問題就快速失敗）
         #   read: LLM 推理時間，雲端 API 90s，本地 120s
         _is_local = provider_name in ("ollama", "ollama_remote")
-        _read_timeout = 120.0 if _is_local else 90.0
+        _read_timeout = 600.0
         self._client = OpenAI(
             api_key=api_key or "not-needed",
             base_url=base_url,
