@@ -1403,14 +1403,49 @@ def agentic_complete(
         if not tool_uses and text_response:
             xml_tools = _parse_xml_tool_calls(text_response)
             if xml_tools:
-                tool_uses = xml_tools
-                # Strip the XML/block tags from text so they don't leak to user
-                text_response = re.sub(
+                # Execute XML tool calls immediately and return results.
+                # Don't continue the loop — MiniMax XML format doesn't support
+                # multi-turn tool calling, so continuing would cause infinite loops.
+                xml_results = []
+                for tu in xml_tools:
+                    t_name = tu.get("name", "")
+                    t_input = tu.get("input", {})
+                    logger.info("[AgenticLoop] 🔧 XML tool: %s(%s)",
+                                t_name, json.dumps(t_input, ensure_ascii=False)[:100])
+                    handler = registry.get_handler(t_name)
+                    if handler:
+                        try:
+                            result = handler(**t_input)
+                        except Exception as e:
+                            result = f"Tool execution error: {e}"
+                    else:
+                        result = f"Unknown tool: {t_name}"
+                    xml_results.append(str(result))
+                    tool_calls_log.append({
+                        "tool": t_name,
+                        "input": t_input,
+                        "output": str(result)[:500],
+                    })
+                    logger.info("[AgenticLoop] 📋 XML result: %s → %s",
+                                t_name, str(result)[:200])
+
+                # Strip XML tags from any surrounding text
+                clean_prefix = re.sub(
                     r'<minimax:tool_call>.*?</minimax:tool_call>', '', text_response, flags=re.DOTALL
                 ).strip()
-                text_response = re.sub(
-                    r'\[TOOL_CALL\].*?\[/TOOL_CALL\]', '', text_response, flags=re.DOTALL
+                clean_prefix = re.sub(
+                    r'\[TOOL_CALL\].*?\[/TOOL_CALL\]', '', clean_prefix, flags=re.DOTALL
                 ).strip()
+
+                final_output = "\n\n".join(filter(None, [clean_prefix] + xml_results))
+                return {
+                    "content": final_output,
+                    "tool_calls": tool_calls_log,
+                    "total_tokens": total_tokens,
+                    "iterations": iteration,
+                    "checkpoints": checkpoint_count,
+                    "status": "completed",
+                }
 
         if not tool_uses:
             clean_text = _strip_status_tags(text_response)
@@ -1436,14 +1471,9 @@ def agentic_complete(
         # ── Execute tool calls ──
         if is_openai_compat:
             # Add assistant message with tool_calls
-            # For XML-parsed tool calls, use plain text (no tool_calls field)
-            assistant_msg = resp.get("assistant_message")
-            if assistant_msg and assistant_msg.get("tool_calls"):
-                oai_messages.append(assistant_msg)
-            else:
-                oai_messages.append({
-                    "role": "assistant", "content": text_response or ""
-                })
+            oai_messages.append(resp.get("assistant_message", {
+                "role": "assistant", "content": text_response
+            }))
         elif is_anthropic:
             oai_messages.append({
                 "role": "assistant",
@@ -1518,19 +1548,11 @@ def agentic_complete(
 
             # Add tool result in provider-specific format
             if is_openai_compat:
-                if tool_id.startswith(("xml_", "block_")):
-                    # XML-parsed tool calls: use user message since there's no
-                    # matching tool_calls entry in the assistant message
-                    oai_messages.append({
-                        "role": "user",
-                        "content": f"[Tool Result: {tool_name}]\n{str(result_str)}",
-                    })
-                else:
-                    oai_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_id,
-                        "content": str(result_str),
-                    })
+                oai_messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_id,
+                    "content": str(result_str),
+                })
             elif is_anthropic:
                 oai_messages.append({
                     "role": "user",
