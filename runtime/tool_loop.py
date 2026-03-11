@@ -1291,14 +1291,16 @@ def agentic_complete(
             logger.debug("[Memory] Auto-injection failed (non-fatal): %s", e)
 
     # ── State Machine Variables ──
-    GLOBAL_FAIL_SAFE = 30         # absolute maximum iterations
+    GLOBAL_FAIL_SAFE = 500        # absolute maximum (只是最後防線，不應該靠這個)
     MAX_STEP_RETRIES = 5          # max retries for a single step
     CHECKPOINT_PRUNE_KEEP = 4     # keep last N tool messages after pruning
+    STUCK_THRESHOLD = 5           # 同一 tool+params 連續呼叫 N 次 = 卡死
 
     iteration = 0
     step_retry_count = 0       # retries for current step
     last_error_tool = ""       # track which tool is failing
     checkpoint_count = 0       # number of checkpoints passed
+    _recent_calls: list[str] = []  # 最近的 tool call 指紋，用於卡死偵測
 
     while iteration < GLOBAL_FAIL_SAFE:
         iteration += 1
@@ -1562,6 +1564,28 @@ def agentic_complete(
                         "content": str(result_str),
                     }],
                 })
+
+        # ── Stuck Detection: 同一 tool+params 連續呼叫 = 卡死 ──
+        for tu in tool_uses:
+            fingerprint = f"{tu.get('name')}:{json.dumps(tu.get('input',{}), sort_keys=True)}"
+            _recent_calls.append(fingerprint)
+        # 只保留最近 STUCK_THRESHOLD 筆
+        _recent_calls = _recent_calls[-STUCK_THRESHOLD:]
+        if (len(_recent_calls) >= STUCK_THRESHOLD
+                and len(set(_recent_calls)) == 1):
+            stuck_tool = tool_uses[0].get("name", "?")
+            logger.warning("[AgenticLoop] 🔄 Stuck detected: %s called %d times with same params, breaking",
+                           stuck_tool, STUCK_THRESHOLD)
+            # 回傳最後一次的結果，不繼續空轉
+            last_result = tool_calls_log[-1].get("output", "") if tool_calls_log else ""
+            return {
+                "content": last_result or f"⚠️ {stuck_tool} 重複執行 {STUCK_THRESHOLD} 次，已自動停止。",
+                "tool_calls": tool_calls_log,
+                "total_tokens": total_tokens,
+                "iterations": iteration,
+                "checkpoints": checkpoint_count,
+                "status": "stuck_break",
+            }
 
         # ── Auto-prune if messages getting too long (token pressure relief) ──
         if len(oai_messages) > 40 and iteration % 10 == 0:
