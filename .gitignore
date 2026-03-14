@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+venv/
+.venv/
+
+# Logs
+*.log
+logs/
+
+# Environment & secrets
+.env
+.env.local
+
+# Backup files
+*.bak*
+*.backup
+*.orig
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data files (should not be in git)
+*.xlsx
+*.xls
+*.csv
+*.sqlite
+*.db
+
+# Output files
+*_output.*
+
+# Temporary
+/tmp/
+*.tmp
+
+# ── SECURITY: Private data & secrets ──────────────────────
+# Data directory (databases, attachments, user data)
+data/
+
+# Test scripts with API keys
+scripts/test_pexels.py
+scripts/test_*.py
+
+# LLM-generated artifacts (do not commit)
+AI_investment_report.md
+docker.sh
+
+# Personal / local config
+*.pst
+*.mbox
+
+# Gemini / AI agent artifacts
+.gemini/
+.agents/workflows/
+
+# Node modules (RAGFlow etc.)
+node_modules/
+

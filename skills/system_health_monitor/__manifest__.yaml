@@ -1,0 +1,12 @@
+name: system_health_monitor
+description: 系统健康检查与自动修复 — 检查错误日志、异常进程、端口占用，如有问题自动启动修复迭代
+version: "1.0"
+entry: health_check.py
+actions:
+  - run: 执行健康检查并自动修复
+  - status: 查看最近检查状态
+tags:
+  - health
+  - monitor
+  - repair
+  - automation

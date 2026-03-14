@@ -1,0 +1,133 @@
+# ============================================
+# 系统告警规则
+# ============================================
+
+groups:
+  - name: arcmind_system
+    rules:
+      # ── CPU 告警 ──
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU 使用率过高"
+          description: "实例 {{ $labels.instance }} CPU 使用率已超过 80%，当前: {{ $value }}%"
+
+      - alert: CriticalCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CPU 使用率严重过高"
+          description: "实例 {{ $labels.instance }} CPU 使用率已超过 95%，当前: {{ $value }}%"
+
+      # ── 内存告警 ──
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "内存使用率过高"
+          description: "实例 {{ $labels.instance }} 内存使用率已超过 80%，当前: {{ $value }}%"
+
+      - alert: CriticalMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "内存使用率严重过高"
+          description: "实例 {{ $labels.instance }} 内存使用率已超过 95%，当前: {{ $value }}%"
+
+      # ── 磁盘告警 ──
+      - alert: HighDiskUsage
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "磁盘空间不足"
+          description: "实例 {{ $labels.instance }} 磁盘空间低于 20%，当前: {{ $value }}%"
+
+      - alert: CriticalDiskUsage
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "磁盘空间严重不足"
+          description: "实例 {{ $labels.instance }} 磁盘空间低于 10%，当前: {{ $value }}%"
+
+      # ── 网络连通性 ──
+      - alert: InstanceDown
+        expr: up{job="arcmind-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "实例宕机"
+          description: "实例 {{ $labels.instance }} 已停止响应"
+
+      # ── 容器告警 ──
+      - alert: ContainerDown
+        expr: count(container_last_seen{name!=""}) by (name) == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "容器宕机"
+          description: "容器 {{ $labels.name }} 已停止运行"
+
+      - alert: HighContainerCPU
+        expr: rate(container_cpu_usage_seconds_total[5m]) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器CPU使用率过高"
+          description: "容器 {{ $labels.name }} CPU 使用率超过 80%"
+
+      - alert: HighContainerMemory
+        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器内存使用率过高"
+          description: "容器 {{ $labels.name }} 内存使用率超过 80%"
+
+  - name: arcmind_application
+    rules:
+      # ── API 响应时间 ──
+      - alert: HighAPIResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API 响应时间过长"
+          description: "API p95 响应时间超过 2 秒"
+
+      # ── HTTP 错误率 ──
+      - alert: HighHTTPErrorRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP 错误率过高"
+          description: "HTTP 5xx 错误率超过 5%"
+
+      # ── 请求量异常 ──
+      - alert: RequestRateAnomaly
+        expr: sum(rate(http_requests_total[5m])) < 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "请求量异常低"
+          description: "请求量异常降低，可能存在服务问题"

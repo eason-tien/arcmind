@@ -1,0 +1,61 @@
+{
+    "sidebar": {
+        "app_name": "ArcMind OS",
+        "new_chat": "建立新對話",
+        "recent": "近期對話",
+        "settings": "系統設定",
+        "views": "視圖 (VIEWS)",
+        "view_chat": "聊天日誌",
+        "view_live": "即時監控",
+        "view_memory": "記憶矩陣"
+    },
+    "dashboard": {
+        "live_title": "即時代理活動監控",
+        "live_desc": "自動化子代理人執行的即時監控",
+        "memory_title": "記憶矩陣",
+        "memory_desc": "語意與情境的長期記憶 (LTM) 視覺化",
+        "search_concepts": "搜尋概念...",
+        "active_context": "作用中上下文",
+        "no_activity": "近期無自主活動。"
+    },
+    "chat": {
+        "model_auto": "模型：預設 (自動)",
+        "welcome_title": "今天我能幫你做些什麼？",
+        "welcome_subtitle": "我是你的自主智慧代理人。歡迎隨時詢問，或交代任何需在你環境上執行的任務。",
+        "input_placeholder": "傳送訊息給 ArcMind...",
+        "disclaimer": "ArcMind 可能會產生錯誤資訊。處理重要事務前請考慮再次核實。",
+        "copied": "已複製",
+        "copy": "複製",
+        "mock_response": "我是 ArcMind，我已收到你的訊息：\n\n> {{msg}}\n\n*注意：這是一條展示用的預設回覆，實際系統尚未與後端模型接通！*"
+    },
+    "settings": {
+        "title": "設定與組態",
+        "tab_models": "AI 模型",
+        "tab_system": "系統環境",
+        "tab_monitor": "監測儀表板",
+        "global_model_title": "全域預設模型",
+        "global_model_desc": "選擇用於新對話的首選 AI 模型。",
+        "api_keys_title": "供應商 API 密鑰",
+        "api_keys_desc": "為自訂 AI 提供商設定獨立的 API Keys。",
+        "registered": "已註冊",
+        "save": "儲存變更",
+        "cancel": "取消",
+        "language": "介面語言",
+        "language_desc": "選擇主要的顯示語言。",
+        "arcmind_engine": "ArcMind 引擎",
+        "version": "版本"
+    },
+    "monitor": {
+        "title": "系統環境監測 (System Monitor)",
+        "desc": "ArcMind 引擎的即時健康與運作狀態。",
+        "status_online": "連線正常",
+        "status_offline": "離線",
+        "metric_agents": "活動中代理 (Agents)",
+        "metric_sessions": "活動中對話 (Sessions)",
+        "metric_tasks": "執行中任務 (Tasks)",
+        "metric_skills": "已掛載技能 (Skills)",
+        "metric_cron": "排程任務 (Cron)",
+        "metric_providers": "AI 供應商數量",
+        "mgis_database": "MGIS 記憶資料庫"
+    }
+}

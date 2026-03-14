@@ -1,0 +1,16 @@
+# ArcMind Global Rules
+# 規則是倍增器，全局生效的槓桿
+
+## 1. 架構是法律 (Architecture is Law)
+- 遵循剛性分層與 Providers 模式。
+- Agent 進行架構修改、新增服務或新增 Feature 時，必須遵守現有目錄結構與相依性限制。
+- 禁止在結構上跑偏（如: 破壞 MGIS 根基，或跨越 Gateway 單獨開發非法模塊）。
+
+## 2. Linter 是 Prompt (Linter is Prompt)
+- 自定義 Linter 不僅僅用於報錯，還必須自帶修復指令（Fix Commands）。
+- Agent 遇到 Linter 報錯時，必須讀取修復指令與上下文，形成自動修復與自我糾錯的完整閉環 (Self-Correction Loop)。
+- 當你發現格式化問題或程式碼檢查失敗，優先透過 Linter 的回饋作為 Prompt 去指導下一步行爲，禁止忽略。
+
+## 通用行為守則
+- 修改核心配置或系統服務前，務必評估 blast radius，並保證影響受控。
+- 新增功能時，請落實至 `ARCHITECTURE.md` 並保持文檔與程式碼的一致性。

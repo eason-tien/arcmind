@@ -1,0 +1,16 @@
+{
+  "servers": [
+    {
+      "name": "filesystem",
+      "transport": "stdio",
+      "command": "/opt/homebrew/bin/npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/eason"]
+    },
+    {
+      "name": "fetch",
+      "transport": "stdio",
+      "command": "/opt/homebrew/bin/npx",
+      "args": ["-y", "mcp-server-fetch-typescript"]
+    }
+  ]
+}

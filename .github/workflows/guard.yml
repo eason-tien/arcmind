@@ -1,0 +1,93 @@
+name: Commit Guard — PR 規範檢查
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate PR commits
+        run: |
+          echo "=== ArcMind Commit Guard ==="
+          ERRORS=0
+
+          # 檢查每個 commit message
+          for sha in $(git log --format=%H origin/main..HEAD 2>/dev/null); do
+            MSG=$(git log --format=%B -n1 $sha)
+            SUBJECT=$(echo "$MSG" | head -1)
+            echo ""
+            echo "📝 Checking: $SUBJECT"
+            
+            # type(scope): subject 格式
+            if ! echo "$SUBJECT" | grep -qE "^(feat!?|fix|perf|refactor|test|docs|chore|ci|style|release)(\([a-z]+\))?:"; then
+              echo "  ❌ Invalid commit format: $SUBJECT"
+              ERRORS=$((ERRORS + 1))
+            else
+              echo "  ✅ Format OK"
+            fi
+          done
+
+          if [ $ERRORS -gt 0 ]; then
+            echo ""
+            echo "🚫 $ERRORS commit(s) violate CONTRIBUTING.md format"
+            echo "   Required: type(scope): subject"
+            echo "   Valid types: feat, fix, perf, refactor, test, docs, chore, ci, style"
+            exit 1
+          fi
+          echo ""
+          echo "✅ All commits pass format check"
+
+      - name: Scan for secrets
+        run: |
+          echo "=== Secret Scan ==="
+          LEAKED=0
+
+          for f in $(git diff --name-only origin/main...HEAD 2>/dev/null); do
+            [ ! -f "$f" ] && continue
+            # Skip binary and safe files
+            echo "$f" | grep -qE "\.(db|sqlite|pyc|pyo|png|jpg|woff|zip)$" && continue
+            echo "$f" | grep -qE "^(\.env\.example|CONTRIBUTING\.md|ops/commit_guard\.py)$" && continue
+            
+            if grep -nE "gho_[A-Za-z0-9]{36}|sk-[A-Za-z0-9]{32,}|/Users/[a-z]+/" "$f" 2>/dev/null; then
+              echo "  🔴 SECRET LEAK in $f"
+              LEAKED=$((LEAKED + 1))
+            fi
+          done
+
+          if [ $LEAKED -gt 0 ]; then
+            echo "🚫 $LEAKED file(s) contain potential secrets"
+            exit 1
+          fi
+          echo "✅ No secrets detected"
+
+      - name: Check protected files
+        run: |
+          echo "=== Protected Files Check ==="
+          PROTECTED=".env config/agents.json governor/governor.py governor/circuit_breaker.py"
+          VIOLATION=0
+
+          for f in $(git diff --name-only origin/main...HEAD 2>/dev/null); do
+            for p in $PROTECTED; do
+              if [ "$f" = "$p" ]; then
+                echo "  🔒 VIOLATION: $f is protected (Level 3 / Human only)"
+                VIOLATION=$((VIOLATION + 1))
+              fi
+            done
+          done
+
+          if [ $VIOLATION -gt 0 ]; then
+            echo "🚫 $VIOLATION protected file(s) modified — needs Human approval"
+            exit 1
+          fi
+          echo "✅ No protected files modified"

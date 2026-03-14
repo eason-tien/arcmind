@@ -1,0 +1,23 @@
+{
+  "error_monitoring": {
+    "enabled": true,
+    "log_level": "INFO",
+    "notification": {
+      "telegram": {
+        "enabled": true,
+        "bot_token_env": "TELEGRAM_BOT_TOKEN",
+        "chat_id_env": "TELEGRAM_CHAT_ID"
+      }
+    },
+    "error_types": {
+      "api_errors": ["timeout", "connection_refused", "500", "502", "503"],
+      "system_errors": ["permission_denied", "file_not_found", "disk_full"],
+      "logic_errors": ["assertion_failed", "null_pointer", "index_out_of_bounds"]
+    },
+    "severity_levels": ["debug", "info", "warning", "error", "critical"]
+  },
+  "health_checks": {
+    "interval_seconds": 60,
+    "components": ["database", "api_server", "core_agent", "file_system"]
+  }
+}

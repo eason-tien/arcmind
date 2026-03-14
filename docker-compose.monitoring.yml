@@ -1,0 +1,181 @@
+# ============================================
+# 监控平台 Docker Compose
+# ============================================
+version: '3.8'
+
+services:
+  # ──────────────────────────────────────────
+  # Prometheus 时序数据库
+  # ──────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: arcmind-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    networks:
+      - monitoring
+
+  # ──────────────────────────────────────────
+  # AlertManager 告警管理
+  # ──────────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: arcmind-alertmanager
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - monitoring
+
+  # ──────────────────────────────────────────
+  # Grafana 可视化仪表板
+  # ──────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: arcmind-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - monitoring
+
+  # ──────────────────────────────────────────
+  # node-exporter 系统指标采集
+  # ──────────────────────────────────────────
+  node-exporter:
+    image: prom/node-exporter:v1.6.1
+    container_name: arcmind-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro
+    networks:
+      - monitoring
+
+  # ──────────────────────────────────────────
+  # cAdvisor 容器指标采集
+  # ──────────────────────────────────────────
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    container_name: arcmind-cadvisor
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - monitoring
+
+  # ──────────────────────────────────────────
+  # blackbox-exporter URL健康检查
+  # ──────────────────────────────────────────
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.24.0
+    container_name: arcmind-blackbox
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/blackbox/blackbox.yml'
+    ports:
+      - "9115:9115"
+    volumes:
+      - ./blackbox:/etc/blackbox:ro
+    networks:
+      - monitoring
+
+  # ──────────────────────────────────────────
+  # Loki 日志聚合
+  # ──────────────────────────────────────────
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: arcmind-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    networks:
+      - monitoring
+
+  # ──────────────────────────────────────────
+  # promtail 日志收集代理
+  # ──────────────────────────────────────────
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: arcmind-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail.yml
+    volumes:
+      - /var/log:/var/log:ro
+      - ./promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+    depends_on:
+      - loki
+    networks:
+      - monitoring
+
+  # ──────────────────────────────────────────
+  # caddy 反向代理 (可选)
+  # ──────────────────────────────────────────
+  caddy:
+    image: caddy:2.7.4
+    container_name: arcmind-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:
+  loki_data:
+  caddy_data:

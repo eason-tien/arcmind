@@ -1,0 +1,2142 @@
+skills:
+- description: 使用 DuckDuckGo 搜尋網路並返回摘要結果
+  governor_required: true
+  handler: run
+  inputs:
+  - description: 搜尋關鍵字
+    name: query
+    required: true
+    type: string
+  - default: 5
+    description: 最多返回幾筆結果
+    name: max_results
+    required: false
+    type: int
+  module: web_search.py
+  name: web_search
+  outputs:
+  - description: 搜尋結果列表
+    name: results
+    type: list
+  permissions:
+  - network
+  tags:
+  - search
+  - web
+  - information
+  version: '1.0'
+- description: 本地檔案讀寫、列目錄、刪除等操作
+  governor_required: true
+  handler: run
+  inputs:
+  - description: read | write | list | delete | exists | mkdir
+    name: operation
+    required: true
+    type: string
+  - description: 目標路徑
+    name: path
+    required: true
+    type: string
+  - description: 寫入內容（operation=write 時必填）
+    name: content
+    required: false
+    type: string
+  module: file_ops.py
+  name: file_ops
+  outputs:
+  - description: 操作結果
+    name: result
+    type: any
+  permissions:
+  - filesystem
+  tags:
+  - file
+  - io
+  - storage
+  version: '1.0'
+- description: 在受限沙盒中執行 Python 程式碼片段
+  governor_required: true
+  handler: run
+  inputs:
+  - description: 要執行的 Python 程式碼
+    name: code
+    required: true
+    type: string
+  - default: 10
+    description: 執行超時秒數
+    name: timeout_s
+    required: false
+    type: int
+  module: code_exec.py
+  name: code_exec
+  outputs:
+  - name: stdout
+    type: string
+  - name: stderr
+    type: string
+  - name: exit_code
+    type: int
+  permissions:
+  - exec
+  tags:
+  - code
+  - python
+  - exec
+  version: '1.0'
+- description: 台股真实规则模拟交易系统 - 自主执行买卖决策，追求8%以上获益率
+  governor_required: false
+  handler: trading_skill
+  inputs:
+  - default: trade
+    description: trade | summary | check_positions | analyze
+    name: action
+    required: false
+    type: string
+  module: trading.py
+  name: trading
+  outputs:
+  - description: 交易执行结果
+    name: result
+    type: dict
+  permissions:
+  - filesystem
+  - network
+  tags:
+  - trading
+  - stock
+  - taiwan
+  version: '1.0'
+- description: 每週 Agent 自我迭代會議 — 收集情報、圓桌會議、生成改進計劃
+  governor_required: false
+  handler: run
+  inputs:
+  - default: meeting
+    description: meeting (週度會議) | daily_check (每日執行檢查)
+    name: phase
+    required: false
+    type: string
+  module: self_iteration.py
+  name: self_iteration
+  outputs:
+  - description: 迭代結果
+    name: result
+    type: dict
+  permissions:
+  - filesystem
+  - network
+  - shell
+  tags:
+  - iteration
+  - self-improvement
+  - meeting
+  - cron
+  version: '1.0'
+- description: 每日早報 — 天氣、新聞、系統狀態、迭代進度
+  governor_required: false
+  handler: run
+  inputs:
+  - default: report
+    description: report (早報) | update_location (更新位置)
+    name: action
+    required: false
+    type: string
+  module: daily_report.py
+  name: daily_report
+  outputs:
+  - description: 報告結果
+    name: result
+    type: dict
+  permissions:
+  - filesystem
+  - network
+  tags:
+  - report
+  - daily
+  - news
+  - weather
+  - cron
+  version: '1.0'
+- description: GitHub 完整整合 — Repos/PRs/Issues/Actions/Releases
+  governor_required: false
+  handler: run
+  inputs:
+  - description: list_repos | get_repo_status | create_pr | list_prs | merge_pr |
+      list_issues | create_issue | close_issue | comment | list_actions | trigger_action
+      | create_release
+    name: action
+    required: true
+    type: string
+  - description: owner/repo 格式
+    name: repo
+    required: false
+    type: string
+  module: github_skill.py
+  name: github_skill
+  outputs:
+  - description: GitHub API 結果
+    name: result
+    type: dict
+  permissions:
+  - network
+  tags:
+  - github
+  - git
+  - pr
+  - issue
+  - ci
+  - release
+  version: '1.0'
+- description: 文件生成 — 分析公司模板 + 生成 PPT/Excel（公司模板模式或自由設計）
+  governor_required: false
+  handler: run
+  inputs:
+  - description: analyze_template | list_templates | create_ppt | create_excel
+    name: action
+    required: true
+    type: string
+  - description: 公司模板名稱（使用公司模板模式）
+    name: template
+    required: false
+    type: string
+  - description: '自由設計風格: corporate | modern | elegant | nature | tech'
+    name: style
+    required: false
+    type: string
+  module: document_skill.py
+  name: document_skill
+  outputs:
+  - description: 生成結果
+    name: result
+    type: dict
+  permissions:
+  - filesystem
+  - network
+  tags:
+  - ppt
+  - excel
+  - document
+  - report
+  - template
+  - spreadsheet
+  version: '1.0'
+- description: 三維度認知掃描 — L1宿主機/L2服務/L3網路拓撲（跨平台 macOS+Windows+Linux）
+  governor_required: false
+  handler: run
+  inputs:
+  - description: host_info | resource_check | scan_ports | list_services | find_configs
+      | db_discovery | network_interfaces | arp_table | route_table | full_scan
+    name: action
+    required: true
+    type: string
+  module: env_discovery.py
+  name: env_discovery
+  outputs:
+  - description: 掃描結果
+    name: result
+    type: dict
+  permissions:
+  - filesystem
+  - network
+  tags:
+  - env
+  - system
+  - host
+  - service
+  - network
+  - topology
+  - discovery
+  version: '1.0'
+- description: GitNexus 代碼智慧引擎 — 知識圖譜查詢、爆炸半徑分析、智能重命名
+  governor_required: false
+  handler: run
+  inputs:
+  - description: query | context | impact | detect | rename | list_repos | reindex
+      | status
+    name: action
+    required: true
+    type: string
+  module: gitnexus_skill.py
+  name: gitnexus_skill
+  outputs:
+  - description: 查詢/分析結果
+    name: result
+    type: dict
+  permissions:
+  - filesystem
+  - network
+  tags:
+  - code
+  - graph
+  - analysis
+  - impact
+  - refactor
+  - gitnexus
+  version: '1.0'
+- description: ArcMind 与 antigravity/gemini CLI 整合桥接 — 零 API Key 调用 Gemini
+  governor_required: false
+  handler: run
+  inputs:
+  - description: 任务描述（将发送给 gemini CLI）
+    name: task
+    required: true
+    type: string
+  - description: 工作目录（默认当前目录）
+    name: cwd
+    required: false
+    type: string
+  - default: 600
+    description: 超时秒数（默认 10 分钟）
+    name: timeout
+    required: false
+    type: int
+  - default: direct
+    description: direct（直接调用）或 filebox（文件信箱）
+    name: mode
+    required: false
+    type: string
+  - description: 任务ID（filebox 模式用）
+    name: task_id
+    required: false
+    type: string
+  module: gemini_bridge.py
+  name: gemini_bridge
+  outputs:
+  - description: gemini CLI 标准输出
+    name: stdout
+    type: string
+  - description: gemini CLI 标准错误
+    name: stderr
+    type: string
+  - description: 退出码
+    name: exit_code
+    type: int
+  - description: 任务ID
+    name: task_id
+    type: string
+  permissions:
+  - shell
+  - filesystem
+  tags:
+  - gemini
+  - antigravity
+  - ai
+  - bridge
+  - cli
+  version: '1.0'
+- description: 通过文件系统控制 Antigravity 桌面应用 — 零 API Key，零封号风险
+  governor_required: false
+  handler: run
+  inputs:
+  - description: 任务描述（将写入 task.md）
+    name: task
+    required: true
+    type: string
+  - description: 指定对话ID（默认使用最新对话）
+    name: conversation_id
+    required: false
+    type: string
+  - default: 300
+    description: 等待结果超时秒数（默认 5 分钟）
+    name: timeout
+    required: false
+    type: int
+  module: antigravity_bridge.py
+  name: antigravity_bridge
+  outputs:
+  - description: Antigravity 处理结果
+    name: result
+    type: string
+  - description: 使用的对话ID
+    name: conversation_id
+    type: string
+  permissions:
+  - filesystem
+  tags:
+  - antigravity
+  - ai
+  - bridge
+  - desktop
+  - control
+  version: '1.0'
+- description: 检查 Antigravity 运行状态和对话列表
+  governor_required: false
+  handler: check_status
+  inputs: []
+  module: antigravity_bridge.py
+  name: antigravity_status
+  outputs:
+  - description: Antigravity 是否在运行
+    name: running
+    type: bool
+  - description: 最新对话ID
+    name: latest_conversation
+    type: string
+  - description: brain 目录是否存在
+    name: brain_dir_exists
+    type: bool
+  permissions:
+  - filesystem
+  tags:
+  - antigravity
+  - status
+  - monitor
+  version: '1.0'
+- description: 获取所有 Antigravity 对话列表
+  governor_required: false
+  handler: get_conversations
+  inputs: []
+  module: antigravity_bridge.py
+  name: antigravity_conversations
+  outputs:
+  - description: 对话列表
+    name: conversations
+    type: list
+  permissions:
+  - filesystem
+  tags:
+  - antigravity
+  - conversation
+  - list
+  version: '1.0'
+- description: 'Multi-Agent Orchestration: Delegate a task to a specialized sub-agent
+    (e.g., researcher, engineer) for asynchronous execution.'
+  governor_required: false
+  handler: delegate_task
+  inputs:
+  - description: The role of the sub-agent, e.g., 'researcher' or 'engineer'
+    name: assignee
+    required: true
+    type: string
+  - description: Short title or description of the task
+    name: title
+    required: true
+    type: string
+  - description: Detailed instructions and context for the sub-agent
+    name: task_data
+    required: false
+    type: dict
+  - description: The current task ID delegating this work. Pass this to link the tasks.
+    name: parent_task_id
+    required: false
+    type: int
+  module: agent_delegation.py
+  name: agent_delegation
+  outputs:
+  - description: The ID of the newly spawned sub-task
+    name: task_id
+    type: int
+  - name: message
+    type: string
+  permissions:
+  - filesystem
+  tags:
+  - orchestration
+  - delegation
+  - multi-agent
+  - paperclip
+  version: '1.0'
+- description: 'Multi-Agent Orchestration: Background worker that processes delegated
+    sub-tasks.'
+  governor_required: false
+  handler: run
+  inputs: []
+  module: worker_heartbeat.py
+  name: worker_heartbeat
+  outputs:
+  - description: Number of tasks processed
+    name: processed
+    type: int
+  - name: message
+    type: string
+  permissions:
+  - filesystem
+  tags:
+  - orchestration
+  - heartbeat
+  - cron
+  - paperclip
+  version: '1.0'
+- description: 'Multi-Agent Orchestration: Delegate a shell/python task to the remote
+    Windows PC at 192.168.1.151.'
+  governor_required: false
+  handler: run
+  inputs:
+  - description: Short title or description of the task
+    name: title
+    required: true
+    type: string
+  - description: The powershell command or python script to execute on the remote
+      machine
+    name: command
+    required: true
+    type: string
+  - default: shell
+    description: '''shell'' (powershell) or ''python'''
+    name: task_type
+    required: false
+    type: string
+  module: windows_delegation.py
+  name: windows_delegation
+  outputs:
+  - name: success
+    type: bool
+  - name: stdout
+    type: string
+  - name: stderr
+    type: string
+  permissions:
+  - network
+  tags:
+  - orchestration
+  - delegation
+  - windows
+  - paperclip
+  version: '1.0'
+- description: AI趋势监控 - 每天自动搜集AI/科技资讯，分析趋势，生成需求报告
+  governor_required: false
+  handler: handler
+  inputs:
+  - default: daily
+    description: daily (每日扫描) | report (生成报告) | search (自定义搜索)
+    name: action
+    required: false
+    type: string
+  - default: 7
+    description: 报告天数 (action=report 时)
+    name: days
+    required: false
+    type: int
+  - description: 搜索关键词 (action=search 时)
+    name: query
+    required: false
+    type: string
+  module: ai_trend_monitor.py
+  name: ai_trend_monitor
+  outputs:
+  - name: status
+    type: string
+  - name: json_output
+    type: string
+  - name: report_output
+    type: string
+  permissions:
+  - filesystem
+  - network
+  tags:
+  - ai
+  - trend
+  - monitor
+  - news
+  - cron
+  version: 1.0.0
+- description: 代码开发助手 - 代码生成、修复、优化、解释
+  governor_required: false
+  handler: handler
+  inputs:
+  - default: generate
+    description: generate (生成) | fix (修复) | optimize (优化) | explain (解释) | execute
+      (执行) | test (测试)
+    name: action
+    required: false
+    type: string
+  - default: python
+    description: '编程语言: python/bash/javascript'
+    name: language
+    required: false
+    type: string
+  - description: 代码描述 (action=generate 时)
+    name: prompt
+    required: false
+    type: string
+  - description: 代码内容 (action=fix/optimize/explain/execute/test 时)
+    name: code
+    required: false
+    type: string
+  - description: 错误信息 (action=fix 时)
+    name: error
+    required: false
+    type: string
+  - default: performance
+    description: '优化方向 (action=optimize 时): performance/readability/security'
+    name: focus
+    required: false
+    type: string
+  - description: 保存文件名
+    name: filename
+    required: false
+    type: string
+  - default: syntax
+    description: '测试类型 (action=test 时): syntax/unit/integration'
+    name: test_type
+    required: false
+    type: string
+  module: code_assistant.py
+  name: code_assistant
+  outputs:
+  - name: status
+    type: string
+  - name: code
+    type: string
+  - name: output_file
+    type: string
+  - name: executed
+    type: bool
+  permissions:
+  - filesystem
+  - shell
+  tags:
+  - code
+  - development
+  - assistant
+  - generator
+  version: 1.0.0
+- description: 多步骤智能体工作流构建器 - 帮助用户快速创建和管理 AI Agent 任务链
+  governor_required: false
+  handler: handler
+  inputs:
+  - default: list_agents
+    description: create_agent | create_workflow | add_step | execute_workflow | list_agents
+      | list_workflows | get_status | list_executions
+    name: action
+    required: false
+    type: string
+  - description: Agent/工作流名称
+    name: name
+    required: false
+    type: string
+  - description: 描述
+    name: description
+    required: false
+    type: string
+  - description: Agent 能力列表
+    name: capabilities
+    required: false
+    type: array
+  - default: ollama:qwen3:8b
+    description: 使用的模型
+    name: model
+    required: false
+    type: string
+  - description: Agent ID
+    name: agent_id
+    required: false
+    type: string
+  - description: 工作流 ID
+    name: workflow_id
+    required: false
+    type: string
+  - description: 步骤名称
+    name: step_name
+    required: false
+    type: string
+  - default: task
+    description: '步骤类型: task/condition/parallel/loop'
+    name: step_type
+    required: false
+    type: string
+  - description: 步骤配置
+    name: step_config
+    required: false
+    type: object
+  - description: 执行输入参数
+    name: inputs
+    required: false
+    type: object
+  - description: 执行 ID
+    name: execution_id
+    required: false
+    type: string
+  module: agent_builder.py
+  name: agent_builder
+  outputs:
+  - description: Claude CLI 标准输出
+    name: stdout
+    type: string
+  - description: Claude CLI 标准错误
+    name: stderr
+    type: string
+  - description: 退出码
+    name: exit_code
+    type: int
+  - description: 任务ID
+    name: task_id
+    type: string
+  - description: Claude CLI 是否已安装
+    name: installed
+    type: bool
+  - description: 是否已登录
+    name: logged_in
+    type: bool
+  - description: 版本号
+    name: version
+    type: string
+  - description: 安装路径
+    name: path
+    type: string
+  permissions:
+  - filesystem
+  tags:
+  - agent
+  - workflow
+  - orchestration
+  - builder
+  - automation
+  version: 1.0.0
+- description: 同步聯邦 peer 的可用能力列表 — 每 5 分鐘從各 peer 拉取 capabilities
+  governor_required: false
+  handler: run
+  inputs: []
+  module: federation_sync.py
+  name: federation_sync
+  outputs:
+  - name: message
+    type: string
+  - name: synced
+    type: int
+  permissions:
+  - network
+  tags:
+  - federation
+  - sync
+  - cron
+  - peer
+  version: '1.0'
+- description: 白帽安全掃描與漏洞評估 — 端口掃描(nmap)、Web漏洞(nikto)、系統審計(lynis)、SSL檢測、代碼審計(bandit)、依賴檢查
+  governor_required: true
+  handler: invoke
+  inputs:
+  - description: port_scan | web_vuln_scan | system_audit | ssl_check | dns_recon
+      | code_audit | dependency_check | network_recon | infra_security_check | full_security_audit
+    name: action
+    required: true
+    type: string
+  - description: 動作參數（target, scan_type, domain, path, severity 等）
+    name: params
+    required: false
+    type: dict
+  module: security_scan.py
+  name: security_scan
+  outputs:
+  - name: success
+    type: bool
+  - name: output
+    type: object
+  - name: video_path
+    type: string
+  - name: audio_path
+    type: string
+  - name: script
+    type: object
+  - name: duration
+    type: string
+  permissions:
+  - shell
+  - network
+  tags:
+  - security
+  - scan
+  - vulnerability
+  - audit
+  - nmap
+  - nikto
+  - pentest
+  version: 1.0.0
+- description: V3 治理 — 定時掃描審批閘門，自動升級逾期 (30min) 和過期 (2h) 的閘門
+  governor_required: false
+  handler: run
+  inputs: []
+  module: approval_gate_sweep.py
+  name: approval_gate_sweep
+  outputs:
+  - name: success
+    type: bool
+  - description: 升級的閘門數量
+    name: escalated
+    type: int
+  - description: 過期的閘門數量
+    name: expired
+    type: int
+  permissions:
+  - database
+  tags:
+  - governance
+  - approval
+  - v3
+  - cron
+  version: '3.0'
+- description: ArcMind 架構集成測試 — 分類器、路由、反幻覺自動驗證
+  governor_required: false
+  handler: run
+  inputs:
+  - default: full
+    description: full | classify | routing | hallucination
+    name: action
+    required: false
+    type: string
+  module: arctest.py
+  name: arctest
+  outputs:
+  - name: success
+    type: bool
+  - description: 測試摘要（如 10/12 passed in 95s）
+    name: summary
+    type: string
+  - description: 完整的人類可讀測試報告
+    name: report_text
+    type: string
+  - description: 每個測試用例的詳細結果
+    name: results
+    type: list
+  permissions:
+  - database
+  tags:
+  - test
+  - integration
+  - qa
+  - diagnostics
+  version: '1.0'
+- description: Pexels 免费素材API — 获取高质量图片和视频素材
+  governor_required: false
+  handler: run
+  inputs:
+  - default: search
+    description: search (搜索素材) | list_curated (列出精选) | get_photo (获取单张) | get_video
+      (获取单个视频)
+    name: action
+    required: false
+    type: string
+  - description: 搜索关键词
+    name: query
+    required: false
+    type: string
+  - default: 5
+    description: 返回数量
+    name: per_page
+    required: false
+    type: int
+  - description: '图片方向: landscape/portrait/square'
+    name: orientation
+    required: false
+    type: string
+  - description: '图片大小: large/medium/small'
+    name: size
+    required: false
+    type: string
+  - description: 素材ID
+    name: media_id
+    required: false
+    type: int
+  module: pexels_skill.py
+  name: pexels_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: photos
+    type: list
+  - name: videos
+    type: list
+  - name: total_results
+    type: int
+  permissions:
+  - network
+  tags:
+  - pexels
+  - image
+  - video
+  - stock
+  - media
+  - 素材
+  version: '1.0'
+- description: Google Workspace 整合 — Gmail / Calendar / Drive / Sheets
+  governor_required: true
+  handler: run
+  inputs:
+  - description: gmail_send | gmail_search | gmail_read | calendar_list | calendar_create
+      | calendar_delete | drive_list | drive_search | drive_download | sheets_read
+      | sheets_write | sheets_create | auth
+    name: action
+    required: true
+    type: string
+  - description: 收件人 (gmail_send)
+    name: to
+    required: false
+    type: string
+  - description: 主旨 (gmail_send / gmail_search)
+    name: subject
+    required: false
+    type: string
+  - description: 內容 (gmail_send)
+    name: body
+    required: false
+    type: string
+  - description: 搜尋查詢 (gmail_search)
+    name: query
+    required: false
+    type: string
+  module: google_workspace.py
+  name: google_workspace
+  outputs:
+  - name: success
+    type: bool
+  - name: messages
+    type: list
+  - name: events
+    type: list
+  - name: files
+    type: list
+  permissions:
+  - network
+  - filesystem
+  tags:
+  - google
+  - gmail
+  - calendar
+  - drive
+  - sheets
+  - productivity
+  version: '1.0'
+- description: 內容摘要 — 對文字/URL/檔案進行 LLM 摘要（brief/detailed/bullet_points/executive）
+  governor_required: false
+  handler: run
+  inputs:
+  - default: text
+    description: 'text | url | file'
+    name: source
+    required: false
+    type: string
+  - description: 文字內容 (source=text)
+    name: text
+    required: false
+    type: string
+  - description: 網址 (source=url)
+    name: url
+    required: false
+    type: string
+  - description: 檔案路徑 (source=file)
+    name: file_path
+    required: false
+    type: string
+  - default: brief
+    description: 'brief | detailed | bullet_points | executive'
+    name: style
+    required: false
+    type: string
+  - default: zh-TW
+    description: 'zh-TW | en'
+    name: language
+    required: false
+    type: string
+  module: summarize_skill.py
+  name: summarize_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: summary
+    type: string
+  - name: compression_ratio
+    type: float
+  permissions:
+  - network
+  tags:
+  - summarize
+  - text
+  - nlp
+  - research
+  version: '1.0'
+- description: Knowledge Graph + Vector Search 記憶系統 — 事實儲存、知識圖譜查詢、語義搜尋
+  governor_required: false
+  handler: run
+  inputs:
+  - default: stats
+    description: store_fact | query_facts | list_entities | relate | search_similar
+        | forget | stats
+    name: action
+    required: false
+    type: string
+  - description: 主詞 (store_fact / relate)
+    name: subject
+    required: false
+    type: string
+  - description: 述詞/關係 (store_fact / relate)
+    name: predicate
+    required: false
+    type: string
+  - description: 受詞 (store_fact / relate)
+    name: object
+    required: false
+    type: string
+  - description: 查詢 (query_facts / search_similar)
+    name: query
+    required: false
+    type: string
+  module: memory_kg.py
+  name: memory_kg
+  outputs:
+  - name: success
+    type: bool
+  - name: facts
+    type: list
+  - name: entities
+    type: list
+  - name: results
+    type: list
+  permissions:
+  - filesystem
+  tags:
+  - memory
+  - knowledge-graph
+  - vector-search
+  - facts
+  - kg
+  version: '1.0'
+- description: Slack 整合 — 訊息發送、頻道管理、歷史記錄、搜尋
+  governor_required: true
+  handler: run
+  inputs:
+  - default: list_channels
+    description: send_message | list_channels | read_history | react | upload_file
+        | search_messages
+    name: action
+    required: false
+    type: string
+  - description: 頻道 ID 或名稱
+    name: channel
+    required: false
+    type: string
+  - description: 訊息文字
+    name: text
+    required: false
+    type: string
+  module: slack_skill.py
+  name: slack_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: channels
+    type: list
+  - name: messages
+    type: list
+  permissions:
+  - network
+  tags:
+  - slack
+  - messaging
+  - communication
+  - channel
+  version: '1.0'
+- description: Email 整合 — SMTP 發送 + IMAP 讀取/搜尋
+  governor_required: true
+  handler: run
+  inputs:
+  - default: search
+    description: send | search | read | list_folders | mark_read
+    name: action
+    required: false
+    type: string
+  - description: 收件人 (send)
+    name: to
+    required: false
+    type: string
+  - description: 主旨 (send)
+    name: subject
+    required: false
+    type: string
+  - description: 內容 (send)
+    name: body
+    required: false
+    type: string
+  - description: 搜尋查詢 (search)
+    name: query
+    required: false
+    type: string
+  module: email_skill.py
+  name: email_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: messages
+    type: list
+  - name: folders
+    type: list
+  permissions:
+  - network
+  tags:
+  - email
+  - smtp
+  - imap
+  - communication
+  version: '1.0'
+- description: Obsidian Vault 整合 — 筆記搜尋、讀寫、反向連結
+  governor_required: false
+  handler: run
+  inputs:
+  - default: list_notes
+    description: search_notes | read_note | create_note | update_note | list_notes
+        | get_backlinks | set_vault_path
+    name: action
+    required: false
+    type: string
+  - description: 搜尋關鍵字 / 筆記名稱
+    name: query
+    required: false
+    type: string
+  - description: 筆記路徑
+    name: path
+    required: false
+    type: string
+  - description: 筆記名稱
+    name: name
+    required: false
+    type: string
+  - description: 筆記內容
+    name: content
+    required: false
+    type: string
+  module: obsidian_skill.py
+  name: obsidian_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: notes
+    type: list
+  - name: results
+    type: list
+  - name: backlinks
+    type: list
+  permissions:
+  - filesystem
+  tags:
+  - obsidian
+  - notes
+  - pkm
+  - knowledge
+  - markdown
+  version: '1.0'
+- description: 圖片生成 — 支援 DALL-E 3 / Stability AI / 本地 ComfyUI
+  governor_required: true
+  handler: run
+  inputs:
+  - default: generate
+    description: generate | list_images
+    name: action
+    required: false
+    type: string
+  - description: 圖片描述提示詞
+    name: prompt
+    required: false
+    type: string
+  - default: auto
+    description: 'dalle | stability | comfyui | auto'
+    name: backend
+    required: false
+    type: string
+  - default: '1024x1024'
+    description: '圖片尺寸 (DALL-E: 1024x1024/1792x1024/1024x1792)'
+    name: size
+    required: false
+    type: string
+  - description: 負面提示詞
+    name: negative_prompt
+    required: false
+    type: string
+  module: image_gen.py
+  name: image_gen
+  outputs:
+  - name: success
+    type: bool
+  - name: local_path
+    type: string
+  - name: image_url
+    type: string
+  - name: backend
+    type: string
+  permissions:
+  - network
+  - filesystem
+  tags:
+  - image
+  - generation
+  - dalle
+  - stability
+  - comfyui
+  - ai
+  version: '1.0'
+- description: 天氣查詢 — 當前天氣 + 多日預報（wttr.in + Open-Meteo）
+  governor_required: false
+  handler: run
+  inputs:
+  - default: current
+    description: current | forecast | set_location
+    name: action
+    required: false
+    type: string
+  - description: 城市名稱
+    name: city
+    required: false
+    type: string
+  - description: 緯度
+    name: lat
+    required: false
+    type: float
+  - description: 經度
+    name: lon
+    required: false
+    type: float
+  - default: 7
+    description: 預報天數 (forecast)
+    name: days
+    required: false
+    type: int
+  module: weather_skill.py
+  name: weather_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: temperature
+    type: float
+  - name: description
+    type: string
+  - name: forecast
+    type: list
+  permissions:
+  - network
+  tags:
+  - weather
+  - forecast
+  - utility
+  version: '1.0'
+- description: Discord Bot 整合 — 訊息發送、頻道管理、伺服器資訊
+  governor_required: true
+  handler: run
+  inputs:
+  - default: list_guilds
+    description: send_message | list_guilds | list_channels | read_history | add_reaction | get_guild_info
+    name: action
+    required: false
+    type: string
+  - description: 頻道 ID
+    name: channel_id
+    required: false
+    type: string
+  - description: 訊息內容
+    name: content
+    required: false
+    type: string
+  module: discord_skill.py
+  name: discord_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: guilds
+    type: list
+  - name: channels
+    type: list
+  permissions:
+  - network
+  tags:
+  - discord
+  - messaging
+  - communication
+  version: '1.0'
+- description: Notion API 整合 — 頁面/資料庫/區塊 CRUD
+  governor_required: true
+  handler: run
+  inputs:
+  - default: search
+    description: search | get_page | get_page_content | create_page | update_page | append_blocks | query_database
+    name: action
+    required: false
+    type: string
+  - description: 搜尋關鍵字
+    name: query
+    required: false
+    type: string
+  - description: 頁面 ID
+    name: page_id
+    required: false
+    type: string
+  module: notion_skill.py
+  name: notion_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: results
+    type: list
+  - name: rows
+    type: list
+  permissions:
+  - network
+  tags:
+  - notion
+  - productivity
+  - database
+  - notes
+  version: '1.0'
+- description: 系統剪貼簿操作 — 讀取/寫入/歷史/追加
+  governor_required: false
+  handler: run
+  inputs:
+  - default: read
+    description: read | write | history | clear | append
+    name: action
+    required: false
+    type: string
+  - description: 文字內容 (write/append)
+    name: text
+    required: false
+    type: string
+  module: clipboard_skill.py
+  name: clipboard_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: content
+    type: string
+  permissions:
+  - system
+  tags:
+  - clipboard
+  - utility
+  - system
+  version: '1.0'
+- description: Headless 瀏覽器自動化 — 網頁擷取/截圖/連結提取/表單填寫
+  governor_required: true
+  handler: run
+  inputs:
+  - default: fetch_page
+    description: fetch_page | screenshot | extract_links | fill_form | evaluate_js
+    name: action
+    required: false
+    type: string
+  - description: 目標網址
+    name: url
+    required: true
+    type: string
+  module: browser_skill.py
+  name: browser_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: content
+    type: string
+  - name: path
+    type: string
+  permissions:
+  - network
+  - filesystem
+  tags:
+  - browser
+  - web
+  - scraping
+  - automation
+  version: '1.0'
+- description: 多語言翻譯 — DeepL + LLM（支援風格/術語表/批次）
+  governor_required: false
+  handler: run
+  inputs:
+  - default: translate
+    description: translate | detect | batch_translate
+    name: action
+    required: false
+    type: string
+  - description: 要翻譯的文字
+    name: text
+    required: false
+    type: string
+  - default: en
+    description: 目標語言 (ISO 639-1)
+    name: target
+    required: false
+    type: string
+  - description: 來源語言 (可選)
+    name: source
+    required: false
+    type: string
+  module: translation_skill.py
+  name: translation_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: translation
+    type: string
+  - name: engine
+    type: string
+  permissions:
+  - network
+  tags:
+  - translation
+  - language
+  - nlp
+  version: '1.0'
+- description: 螢幕截圖 — macOS screencapture / Linux scrot
+  governor_required: false
+  handler: run
+  inputs:
+  - default: capture
+    description: capture | list
+    name: action
+    required: false
+    type: string
+  - default: full
+    description: full | window | area | clipboard
+    name: mode
+    required: false
+    type: string
+  - default: 0
+    description: 延遲秒數
+    name: delay
+    required: false
+    type: int
+  module: screenshot_skill.py
+  name: screenshot_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: path
+    type: string
+  permissions:
+  - system
+  tags:
+  - screenshot
+  - capture
+  - utility
+  version: '1.0'
+- description: 通用 SQL 查詢 — SQLite / PostgreSQL / MySQL
+  governor_required: true
+  handler: run
+  inputs:
+  - default: query
+    description: query | list_tables | describe_table
+    name: action
+    required: false
+    type: string
+  - description: SQLite 檔案路徑
+    name: db_path
+    required: false
+    type: string
+  - description: SQL 語句
+    name: sql
+    required: false
+    type: string
+  - description: 資料表名稱 (describe_table)
+    name: table
+    required: false
+    type: string
+  module: database_skill.py
+  name: database_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: rows
+    type: list
+  - name: columns
+    type: list
+  permissions:
+  - filesystem
+  - network
+  tags:
+  - database
+  - sql
+  - sqlite
+  - postgresql
+  version: '1.0'
+- description: 系統進程管理 — 列出/搜尋/終止進程 + 資源監控
+  governor_required: true
+  handler: run
+  inputs:
+  - default: list
+    description: list | search | kill | resources
+    name: action
+    required: false
+    type: string
+  - description: 搜尋關鍵字 (search)
+    name: query
+    required: false
+    type: string
+  - description: 進程 PID (kill)
+    name: pid
+    required: false
+    type: int
+  module: process_skill.py
+  name: process_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: processes
+    type: list
+  permissions:
+  - system
+  tags:
+  - process
+  - system
+  - monitoring
+  version: '1.0'
+- description: 壓縮/解壓 — zip, tar, gzip, bz2
+  governor_required: false
+  handler: run
+  inputs:
+  - default: compress
+    description: compress | extract | list
+    name: action
+    required: false
+    type: string
+  - description: 來源路徑 (compress)
+    name: source
+    required: false
+    type: string
+  - description: 壓縮檔路徑 (extract/list)
+    name: archive
+    required: false
+    type: string
+  - default: zip
+    description: zip | tar | tar.gz | tar.bz2
+    name: format
+    required: false
+    type: string
+  module: archive_skill.py
+  name: archive_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: output
+    type: string
+  permissions:
+  - filesystem
+  tags:
+  - archive
+  - zip
+  - tar
+  - compression
+  version: '1.0'
+- description: PDF 操作 — 文字提取/合併/拆分/資訊
+  governor_required: false
+  handler: run
+  inputs:
+  - default: extract_text
+    description: extract_text | merge | split | info
+    name: action
+    required: false
+    type: string
+  - description: PDF 檔案路徑
+    name: pdf_path
+    required: false
+    type: string
+  - description: PDF 檔案列表 (merge)
+    name: pdf_files
+    required: false
+    type: list
+  module: pdf_skill.py
+  name: pdf_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: pages
+    type: list
+  permissions:
+  - filesystem
+  tags:
+  - pdf
+  - document
+  - text-extraction
+  version: '1.0'
+- description: QR Code 生成/讀取
+  governor_required: false
+  handler: run
+  inputs:
+  - default: generate
+    description: generate | read
+    name: action
+    required: false
+    type: string
+  - description: QR Code 資料 (generate)
+    name: data
+    required: false
+    type: string
+  - description: 圖片路徑 (read)
+    name: image_path
+    required: false
+    type: string
+  module: qrcode_skill.py
+  name: qrcode_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: path
+    type: string
+  permissions:
+  - filesystem
+  tags:
+  - qrcode
+  - utility
+  version: '1.0'
+- description: 雜湊/編碼/加密工具 — MD5, SHA, Base64, URL, JWT, HMAC, UUID
+  governor_required: false
+  handler: run
+  inputs:
+  - default: hash
+    description: hash | hash_file | encode | decode | hmac | uuid
+    name: action
+    required: false
+    type: string
+  - description: 輸入文字
+    name: text
+    required: false
+    type: string
+  - default: sha256
+    description: md5 | sha1 | sha256 | sha512
+    name: algorithm
+    required: false
+    type: string
+  - default: base64
+    description: base64 | base64url | url | hex | jwt
+    name: encoding
+    required: false
+    type: string
+  module: hash_skill.py
+  name: hash_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: hash
+    type: string
+  - name: result
+    type: string
+  permissions: []
+  tags:
+  - hash
+  - encoding
+  - crypto
+  - utility
+  version: '1.0'
+- description: JSON/YAML/CSV 資料處理 — 格式轉換/查詢/驗證/合併
+  governor_required: false
+  handler: run
+  inputs:
+  - default: parse
+    description: parse | convert | query | merge | validate
+    name: action
+    required: false
+    type: string
+  - description: 輸入文字
+    name: text
+    required: false
+    type: string
+  - description: 檔案路徑
+    name: file_path
+    required: false
+    type: string
+  - description: JMESPath 查詢路徑
+    name: path
+    required: false
+    type: string
+  module: json_tool.py
+  name: json_tool
+  outputs:
+  - name: success
+    type: bool
+  - name: data
+    type: any
+  - name: result
+    type: string
+  permissions:
+  - filesystem
+  tags:
+  - json
+  - yaml
+  - csv
+  - data
+  - utility
+  version: '1.0'
+- description: Docker 容器管理 — 列出/啟動/停止/日誌/exec
+  governor_required: true
+  handler: run
+  inputs:
+  - default: list_containers
+    description: list_containers | list_images | start | stop | logs | exec | run | stats
+    name: action
+    required: false
+    type: string
+  - description: 容器名稱或 ID
+    name: container
+    required: false
+    type: string
+  - description: Docker image
+    name: image
+    required: false
+    type: string
+  module: docker_skill.py
+  name: docker_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: containers
+    type: list
+  - name: output
+    type: string
+  permissions:
+  - system
+  - network
+  tags:
+  - docker
+  - container
+  - devops
+  version: '1.0'
+- description: SSH 遠端執行 — 命令/上傳/下載/測試連線
+  governor_required: true
+  handler: run
+  inputs:
+  - default: exec
+    description: exec | upload | download | test
+    name: action
+    required: false
+    type: string
+  - description: SSH 主機
+    name: host
+    required: true
+    type: string
+  - description: SSH 使用者
+    name: user
+    required: false
+    type: string
+  - description: 遠端命令 (exec)
+    name: command
+    required: false
+    type: string
+  module: ssh_skill.py
+  name: ssh_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: stdout
+    type: string
+  - name: return_code
+    type: int
+  permissions:
+  - network
+  - system
+  tags:
+  - ssh
+  - remote
+  - devops
+  version: '1.0'
+- description: 網路診斷 — ping/DNS/port check/HTTP/traceroute/whois
+  governor_required: false
+  handler: run
+  inputs:
+  - default: ping
+    description: ping | dns | port_check | http | traceroute | whois
+    name: action
+    required: false
+    type: string
+  - description: 目標主機
+    name: host
+    required: false
+    type: string
+  module: network_skill.py
+  name: network_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: output
+    type: string
+  permissions:
+  - network
+  tags:
+  - network
+  - ping
+  - dns
+  - diagnostic
+  version: '1.0'
+- description: 正規表達式工具 — 測試/匹配/替換/提取/分割
+  governor_required: false
+  handler: run
+  inputs:
+  - default: test
+    description: test | find_all | replace | extract_groups | split | common_patterns
+    name: action
+    required: false
+    type: string
+  - description: 正規表達式
+    name: pattern
+    required: false
+    type: string
+  - description: 輸入文字
+    name: text
+    required: false
+    type: string
+  module: regex_skill.py
+  name: regex_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: matches
+    type: list
+  permissions: []
+  tags:
+  - regex
+  - text
+  - utility
+  version: '1.0'
+- description: 文字處理 — diff/word count/格式化/提取/模板
+  governor_required: false
+  handler: run
+  inputs:
+  - default: word_count
+    description: diff | word_count | format | extract | template
+    name: action
+    required: false
+    type: string
+  - description: 輸入文字
+    name: text
+    required: false
+    type: string
+  module: text_tool.py
+  name: text_tool
+  outputs:
+  - name: success
+    type: bool
+  - name: result
+    type: string
+  permissions: []
+  tags:
+  - text
+  - diff
+  - formatting
+  - utility
+  version: '1.0'
+- description: 系統通知 — macOS 通知/語音/對話框
+  governor_required: false
+  handler: run
+  inputs:
+  - default: notify
+    description: notify | say | dialog
+    name: action
+    required: false
+    type: string
+  - description: 通知訊息
+    name: message
+    required: false
+    type: string
+  - default: ArcMind
+    description: 標題
+    name: title
+    required: false
+    type: string
+  module: notification_skill.py
+  name: notification_skill
+  outputs:
+  - name: success
+    type: bool
+  permissions:
+  - system
+  tags:
+  - notification
+  - system
+  - macos
+  version: '1.0'
+- description: CRON 排程管理 — 查看/新增/刪除/暫停/更新
+  governor_required: true
+  handler: run
+  inputs:
+  - default: list
+    description: list | add | remove | toggle | update
+    name: action
+    required: false
+    type: string
+  - description: 任務名稱
+    name: name
+    required: false
+    type: string
+  - description: CRON 表達式
+    name: schedule
+    required: false
+    type: string
+  - description: 要執行的 skill
+    name: skill
+    required: false
+    type: string
+  module: cron_skill.py
+  name: cron_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: tasks
+    type: list
+  permissions:
+  - filesystem
+  tags:
+  - cron
+  - scheduler
+  - automation
+  version: '1.0'
+- description: 本地 Git 操作 — status/log/diff/branch/commit/stash
+  governor_required: true
+  handler: run
+  inputs:
+  - default: status
+    description: status | log | diff | branch | commit | stash | checkout
+    name: action
+    required: false
+    type: string
+  - description: Git 倉庫路徑
+    name: repo_path
+    required: false
+    type: string
+  - description: commit 訊息
+    name: message
+    required: false
+    type: string
+  module: git_skill.py
+  name: git_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: commits
+    type: list
+  - name: branch
+    type: string
+  permissions:
+  - filesystem
+  tags:
+  - git
+  - vcs
+  - devops
+  version: '1.0'
+- description: HTTP API 測試 — GET/POST/PUT/DELETE + 鏈式請求
+  governor_required: true
+  handler: run
+  inputs:
+  - default: request
+    description: request | chain
+    name: action
+    required: false
+    type: string
+  - description: 目標 URL
+    name: url
+    required: false
+    type: string
+  - default: GET
+    description: GET | POST | PUT | DELETE | PATCH
+    name: method
+    required: false
+    type: string
+  - description: 請求 body (dict 或 string)
+    name: body
+    required: false
+    type: any
+  module: api_tester.py
+  name: api_tester
+  outputs:
+  - name: success
+    type: bool
+  - name: status
+    type: int
+  - name: body
+    type: any
+  permissions:
+  - network
+  tags:
+  - api
+  - http
+  - testing
+  - curl
+  version: '1.0'
+- description: OCR 文字辨識 — macOS Vision / Tesseract
+  governor_required: false
+  handler: run
+  inputs:
+  - default: recognize
+    description: recognize | batch
+    name: action
+    required: false
+    type: string
+  - description: 圖片路徑
+    name: image_path
+    required: false
+    type: string
+  - description: 語言
+    name: lang
+    required: false
+    type: string
+  - default: auto
+    description: auto | vision | tesseract
+    name: engine
+    required: false
+    type: string
+  module: ocr_skill.py
+  name: ocr_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: text
+    type: string
+  - name: lines
+    type: list
+  permissions:
+  - filesystem
+  tags:
+  - ocr
+  - text-recognition
+  - vision
+  version: '1.0'
+- description: Marp 簡報製作 — Markdown → PPT/PDF/HTML 簡報
+  governor_required: false
+  handler: run
+  inputs:
+  - default: create
+    description: create | convert | list_themes | preview | save_template
+    name: action
+    required: false
+    type: string
+  - default: pptx
+    description: html | pdf | pptx | png | jpeg
+    name: format
+    required: false
+    type: string
+  - default: default
+    description: default | gaia | uncover | <custom>
+    name: theme
+    required: false
+    type: string
+  - description: 投影片結構列表 (structured slides)
+    name: slides
+    required: false
+    type: list
+  - description: 原始 Marp Markdown 內容
+    name: markdown
+    required: false
+    type: string
+  - description: 簡報標題
+    name: title
+    required: false
+    type: string
+  - description: 輸出路徑
+    name: output
+    required: false
+    type: string
+  module: marp_skill.py
+  name: marp_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: output
+    type: string
+  - name: markdown_path
+    type: string
+  permissions:
+  - filesystem
+  - network
+  tags:
+  - marp
+  - presentation
+  - pptx
+  - pdf
+  - markdown
+  - slides
+  version: '1.0'
+- description: 精美 AI 簡報生成 — Presenton (Gamma/Beautiful.ai 替代品)
+  governor_required: false
+  handler: run
+  inputs:
+  - default: generate
+    description: generate | list | status
+    name: action
+    required: false
+    type: string
+  - description: 簡報主題或詳細描述
+    name: content
+    required: false
+    type: string
+  - default: 5
+    description: 簡報頁數
+    name: n_slides
+    required: false
+    type: int
+  - default: Chinese
+    description: 語言
+    name: language
+    required: false
+    type: string
+  - default: general
+    description: 簡報模板
+    name: template
+    required: false
+    type: string
+  - default: pptx
+    description: pptx | pdf
+    name: export_as
+    required: false
+    type: string
+  module: presenton_skill.py
+  name: presenton_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: file_path
+    type: string
+  - name: presentation_id
+    type: string
+  - name: edit_url
+    type: string
+  permissions:
+  - network
+  tags:
+  - presentation
+  - pptx
+  - ai
+  - slides
+  - presenton
+  version: '1.0'
+- description: PST 郵件知識庫 — 讀取 .pst 檔，分類建立知識庫供 Agent 搜尋學習
+  governor_required: false
+  handler: run
+  inputs:
+  - default: stats
+    description: import_pst | search | stats | browse | export | read
+    name: action
+    required: false
+    type: string
+  - description: PST 檔案路徑 (import_pst)
+    name: pst_path
+    required: false
+    type: string
+  - description: 搜尋關鍵字 (search/export)
+    name: query
+    required: false
+    type: string
+  - description: 分類方式 folder|sender|year (browse/export)
+    name: by
+    required: false
+    type: string
+  - description: 分類值 (browse/export)
+    name: value
+    required: false
+    type: string
+  - description: 郵件 ID (read)
+    name: id
+    required: false
+    type: int
+  - default: 10
+    description: 結果數量上限
+    name: limit
+    required: false
+    type: int
+  module: email_kb_skill.py
+  name: email_kb_skill
+  outputs:
+  - name: success
+    type: bool
+  - name: results
+    type: list
+  - name: total_emails
+    type: int
+  permissions:
+  - filesystem
+  - network
+  tags:
+  - email
+  - pst
+  - knowledge-base
+  - search
+  version: '1.0'
+version: '1.0'

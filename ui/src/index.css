@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #09090b;
+  --color-foreground: #fafafa;
+  --color-card: #18181b;
+  --color-card-hover: #27272a;
+  --color-primary: #8b5cf6;
+  --color-primary-hover: #7c3aed;
+  --color-secondary: #27272a;
+  --color-secondary-hover: #3f3f46;
+  --color-border: #27272a;
+  --color-input: #18181b;
+  --color-ring: #8b5cf6;
+  --radius-lg: 0.75rem;
+  --radius-md: 0.5rem;
+  --radius-sm: 0.25rem;
+
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Electron Window Dragging Support */
+.titlebar-drag-region {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.no-drag,
+button,
+a,
+input,
+textarea,
+select,
+.lucide {
+  -webkit-app-region: no-drag;
+}
+
+@layer base {
+  :root {
+    --background: var(--color-background);
+    --foreground: var(--color-foreground);
+    --card: var(--color-card);
+    --card-foreground: var(--color-foreground);
+    --popover: var(--color-card);
+    --popover-foreground: var(--color-foreground);
+    --primary: var(--color-primary);
+    --primary-foreground: #ffffff;
+    --secondary: var(--color-secondary);
+    --secondary-foreground: var(--color-foreground);
+    --muted: #27272a;
+    --muted-foreground: #a1a1aa;
+    --accent: #27272a;
+    --accent-foreground: var(--color-foreground);
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: var(--color-border);
+    --input: var(--color-input);
+    --ring: var(--color-ring);
+    --radius: var(--radius-md);
+  }
+
+  * {
+    border-color: var(--border);
+    outline-color: rgba(139, 92, 246, 0.5);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    @apply font-sans antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom Scrollbar for sleek UI */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-neutral-500/30 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-neutral-500/50;
+}
+
+/* Glassmorphism Classes */
+@utility glass {
+  background: rgba(24, 24, 27, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+@utility glass-panel {
+  background: linear-gradient(145deg, rgba(39, 39, 42, 0.4) 0%, rgba(24, 24, 27, 0.6) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Code block markdown styles */
+.prose pre {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  @apply rounded-lg overflow-x-auto;
+}
+
+.prose code {
+  background-color: var(--muted);
+  color: var(--primary-foreground);
+  border: 1px solid rgba(39, 39, 42, 0.5);
+  @apply px-1.5 py-0.5 rounded-md text-sm font-mono;
+}
+
+.prose pre code {
+  background-color: transparent;
+  color: var(--foreground);
+  border: none;
+  @apply p-0 text-sm;
+}

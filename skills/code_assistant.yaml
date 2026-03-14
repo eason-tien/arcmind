@@ -1,0 +1,107 @@
+name: code_assistant
+version: 1.0.0
+description: 代码开发助手 - 代码生成、修复、优化、解释
+category: development
+
+actions:
+  generate:
+    description: 根据描述生成代码
+    params:
+      - name: language
+        type: string
+        default: python
+        description: 编程语言 (python/bash/javascript)
+      - name: prompt
+        type: string
+        required: true
+        description: 代码描述或需求
+      - name: filename
+        type: string
+        description: 保存文件名
+
+  fix:
+    description: 修复代码错误
+    params:
+      - name: code
+        type: string
+        required: true
+        description: 有问题的代码
+      - name: error
+        type: string
+        description: 错误信息
+      - name: language
+        type: string
+        default: python
+
+  optimize:
+    description: 优化代码
+    params:
+      - name: code
+        type: string
+        required: true
+        description: 要优化的代码
+      - name: language
+        type: string
+        default: python
+      - name: focus
+        type: string
+        default: performance
+        description: 优化方向 (performance/readability/security)
+
+  explain:
+    description: 解释代码
+    params:
+      - name: code
+        type: string
+        required: true
+        description: 要解释的代码
+      - name: language
+        type: string
+        default: python
+
+  execute:
+    description: 执行代码
+    params:
+      - name: code
+        type: string
+        required: true
+      - name: language
+        type: string
+        default: python
+
+  test:
+    description: 测试代码
+    params:
+      - name: code
+        type: string
+        required: true
+      - name: language
+        type: string
+        default: python
+      - name: test_type
+        type: string
+        default: syntax
+
+model: ollama:qwen2.5-coder:14b
+output_dir: data/code_outputs
+
+examples:
+  - action: generate
+    params:
+      language: python
+      prompt: "一个计算斐波那契数列的函数"
+  
+  - action: fix
+    params:
+      code: "print('hello"
+      error: "SyntaxError: EOL while scanning string literal"
+      language: python
+  
+  - action: explain
+    params:
+      code: |
+        def fib(n):
+            if n <= 1:
+                return n
+            return fib(n-1) + fib(n-2)
+      language: python

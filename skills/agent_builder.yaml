@@ -1,0 +1,105 @@
+name: agent_builder
+description: 多步骤智能体工作流构建器 - 帮助用户快速创建和管理 AI Agent 任务链
+version: 1.0.0
+author: ArcMind
+tags:
+  - agent
+  - workflow
+  - orchestration
+  - builder
+  - automation
+capabilities:
+  - create_agent
+  - create_workflow
+  - execute_workflow
+  - add_step
+  - list_agents
+  - list_workflows
+  - get_status
+actions:
+  - name: create_agent
+    description: 创建新 Agent 定义
+    params:
+      - name: name
+        type: string
+        required: true
+        description: Agent 名称
+      - name: description
+        type: string
+        required: false
+        description: Agent 描述
+      - name: capabilities
+        type: array
+        required: false
+        description: Agent 能力列表
+      - name: model
+        type: string
+        required: false
+        default: ollama:qwen3:8b
+        description: 使用的模型
+
+  - name: create_workflow
+    description: 创建工作流
+    params:
+      - name: name
+        type: string
+        required: true
+        description: 工作流名称
+      - name: description
+        type: string
+        required: false
+        description: 工作流描述
+      - name: agent_id
+        type: string
+        required: false
+        description: 绑定的 Agent ID
+
+  - name: add_step
+    description: 添加步骤到工作流
+    params:
+      - name: workflow_id
+        type: string
+        required: true
+        description: 工作流 ID
+      - name: step_name
+        type: string
+        required: true
+        description: 步骤名称
+      - name: step_type
+        type: string
+        required: false
+        default: task
+        description: 步骤类型 (task/condition/parallel/loop)
+      - name: step_config
+        type: object
+        required: false
+        description: 步骤配置
+
+  - name: execute_workflow
+    description: 执行工作流
+    params:
+      - name: workflow_id
+        type: string
+        required: true
+        description: 工作流 ID
+      - name: inputs
+        type: object
+        required: false
+        description: 输入参数
+
+  - name: list_agents
+    description: 列出所有 Agent
+
+  - name: list_workflows
+    description: 列出所有工作流
+
+  - name: get_status
+    description: 获取执行状态
+    params:
+      - name: execution_id
+        type: string
+        required: true
+        description: 执行 ID
+
+  - name: list_executions
+    description: 列出所有执行记录

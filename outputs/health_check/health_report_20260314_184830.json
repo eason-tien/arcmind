@@ -1,0 +1,89 @@
+{
+  "timestamp": "2026-03-14T18:48:30.425595",
+  "health_data": {
+    "error_logs": {
+      "patterns": {
+        "ERROR": [],
+        "WARNING": [
+          "[repair_20260313_224000.log] 2026-03-13 22:40:00,723 [WARNING] ⚠️ 数据库文件不存在",
+          "[repair_20260313_224000.log] 2026-03-13 22:40:00,885 [WARNING] ⚠️ 端口 8100 被占用: 47680",
+          "[repair_20260313_224000.log] 2026-03-13 22:40:00,887 [WARNING] ⚠️ 缺失依赖: ['flask']"
+        ],
+        "CRITICAL": [],
+        "npm_404": [],
+        "exception": []
+      },
+      "summary": {
+        "ERROR_count": 0,
+        "WARNING_count": 3,
+        "CRITICAL_count": 0,
+        "npm_404_count": 0,
+        "exception_count": 0
+      }
+    },
+    "system_health": {
+      "database": "not_found",
+      "disk_space": "8%",
+      "memory": "",
+      "processes": 1
+    },
+    "cron_status": {
+      "total_jobs": 8,
+      "enabled_jobs": 7,
+      "jobs": [
+        {
+          "name": "weekly-agent-meeting",
+          "enabled": true,
+          "skill": "self_iteration",
+          "last_run": null
+        },
+        {
+          "name": "iteration-daily-check",
+          "enabled": true,
+          "skill": "self_iteration",
+          "last_run": "2026-03-14T01:00:22.003455"
+        },
+        {
+          "name": "daily-morning-report",
+          "enabled": true,
+          "skill": "daily_report",
+          "last_run": "2026-03-13T22:01:39.897232"
+        },
+        {
+          "name": "env-scan",
+          "enabled": true,
+          "skill": "env_discovery",
+          "last_run": "2026-03-14T04:00:02.357795"
+        },
+        {
+          "name": "worker-heartbeat",
+          "enabled": true,
+          "skill": "worker_heartbeat",
+          "last_run": "2026-03-14T11:44:56.055107"
+        },
+        {
+          "name": "verify-test-job",
+          "enabled": false,
+          "skill": "code_exec",
+          "last_run": null
+        },
+        {
+          "name": "system_health_check",
+          "enabled": true,
+          "skill": "health_check",
+          "last_run": "2026-03-14T05:28:32.765875"
+        },
+        {
+          "name": "memory-compress",
+          "enabled": true,
+          "skill": "memory_compress",
+          "last_run": null
+        }
+      ]
+    },
+    "repair": {
+      "repair_needed": false,
+      "reasons": []
+    }
+  }
+}

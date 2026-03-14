@@ -1,0 +1,401 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-03-13",
+  "apis": {
+    "pexels": {
+      "name": "Pexels",
+      "api_key_env": "PEXELS_API_KEY",
+      "purpose": "图片与视频素材搜索",
+      "endpoint": "https://api.pexels.com/v1/search",
+      "usage": "调用 /Users/eason/Code/arcmind/scripts/pexels_search.py"
+    },
+    "nvidia": {
+      "name": "NVIDIA NIM",
+      "api_key_env": "NVIDIA_API_KEY",
+      "purpose": "大模型 API 调用",
+      "models": ["llama-3.1-405b", "llama-3.1-70b", "llama-3.1-8b", "mistral-7b"]
+    }
+  },
+  "tools": {
+    "invoke_skill": {
+      "description": "调用已注册的 ArcMind 技能",
+      "usage": "invoke_skill(skill_name, inputs)"
+    },
+    "run_command": {
+      "description": "执行本地命令",
+      "usage": "run_command(command)"
+    },
+    "read_file": {
+      "description": "读取文件内容",
+      "usage": "read_file(path)"
+    },
+    "write_file": {
+      "description": "写入文件",
+      "usage": "write_file(path, content)"
+    },
+    "web_search": {
+      "description": "网络搜索",
+      "usage": "web_search(query, mode)"
+    }
+  },
+  "skills": {
+    "web_search": {
+      "description": "多引擎網路搜尋 — Perplexity/Tavily/DDG",
+      "setup": "PERPLEXITY_API_KEY 或 TAVILY_API_KEY（可選，有 DDG fallback）",
+      "usage": "invoke_skill('web_search', {query: '...', mode: 'fast'})",
+      "actions": ["search", "deep_search", "research"]
+    },
+    "file_ops": {
+      "description": "檔案系統操作 — 讀寫/搜尋/目錄管理",
+      "setup": "無",
+      "usage": "invoke_skill('file_ops', {action: 'read', path: '/path/to/file'})",
+      "actions": ["read", "write", "list", "search", "delete", "copy", "move"]
+    },
+    "code_exec": {
+      "description": "程式碼執行 — Python/Shell/Node",
+      "setup": "無",
+      "usage": "invoke_skill('code_exec', {language: 'python', code: 'print(1+1)'})",
+      "actions": ["execute", "eval"]
+    },
+    "trading": {
+      "description": "交易模擬 — 台股規則模擬交易",
+      "setup": "需設定交易參數",
+      "usage": "invoke_skill('trading', {action: 'simulate', ...})",
+      "actions": ["simulate", "backtest", "status"]
+    },
+    "github_skill": {
+      "description": "GitHub API 整合 — repo/issue/PR 管理",
+      "setup": "GITHUB_TOKEN env var",
+      "usage": "invoke_skill('github_skill', {action: 'list_repos'})",
+      "actions": ["list_repos", "create_issue", "list_issues", "create_pr", "get_repo"]
+    },
+    "document_skill": {
+      "description": "文件 DNA 工具箱 — Markdown/PDF/Word 生成",
+      "setup": "pip install python-docx PyMuPDF（可選）",
+      "usage": "invoke_skill('document_skill', {action: 'create_md', content: '...'})",
+      "actions": ["create_md", "create_docx", "create_pdf", "convert"]
+    },
+    "env_discovery": {
+      "description": "環境探索 — 系統/語言/工具鏈偵測",
+      "setup": "無",
+      "usage": "invoke_skill('env_discovery', {})",
+      "actions": ["discover"]
+    },
+    "gitnexus_skill": {
+      "description": "GitNexus 程式碼智能 — 符號查詢/影響分析",
+      "setup": "npx gitnexus analyze",
+      "usage": "invoke_skill('gitnexus_skill', {action: 'query', query: 'auth'})",
+      "actions": ["query", "context", "impact", "detect_changes", "rename"]
+    },
+    "gemini_bridge": {
+      "description": "Gemini Bridge — Google Gemini API 橋接",
+      "setup": "GOOGLE_API_KEY env var",
+      "usage": "invoke_skill('gemini_bridge', {action: 'chat', message: '...'})",
+      "actions": ["chat", "analyze"]
+    },
+    "antigravity_bridge": {
+      "description": "Antigravity Bridge — 與 Antigravity Agent 通訊",
+      "setup": "自動（需 Antigravity 運行中）",
+      "usage": "invoke_skill('antigravity_bridge', {action: 'send', message: '...'})",
+      "actions": ["send", "status"]
+    },
+    "antigravity_status": {
+      "description": "Antigravity 狀態查詢",
+      "setup": "無",
+      "usage": "invoke_skill('antigravity_status', {})",
+      "actions": ["status"]
+    },
+    "antigravity_conversations": {
+      "description": "Antigravity 對話管理",
+      "setup": "無",
+      "usage": "invoke_skill('antigravity_conversations', {action: 'list'})",
+      "actions": ["list", "read"]
+    },
+    "agent_delegation": {
+      "description": "Agent 委派 — CEO 發包任務給子 Agent",
+      "setup": "無（內建 Agent 系統）",
+      "usage": "invoke_skill('agent_delegation', {operation: 'delegate', assignee: 'code', command: '...'})",
+      "actions": ["delegate", "delegate_multi", "escalate", "handoff"]
+    },
+    "worker_heartbeat": {
+      "description": "Worker 心跳 — 背景任務排程器",
+      "setup": "無",
+      "usage": "invoke_skill('worker_heartbeat', {action: 'status'})",
+      "actions": ["status", "list", "cancel"]
+    },
+    "windows_delegation": {
+      "description": "Windows 委派 — 跨機器 Windows 任務委派",
+      "setup": "需設定 Windows 遠端連線",
+      "usage": "invoke_skill('windows_delegation', {action: 'exec', command: '...'})",
+      "actions": ["exec", "status"]
+    },
+    "ai_trend_monitor": {
+      "description": "AI 趨勢監控 — 追蹤 AI 產業新聞",
+      "setup": "無",
+      "usage": "invoke_skill('ai_trend_monitor', {action: 'scan'})",
+      "actions": ["scan", "report"]
+    },
+    "code_assistant": {
+      "description": "程式碼助手 — Code Review/重構/生成",
+      "setup": "無",
+      "usage": "invoke_skill('code_assistant', {action: 'review', code: '...'})",
+      "actions": ["review", "refactor", "generate", "explain"]
+    },
+    "agent_builder": {
+      "description": "Agent 建造器 — 動態建立子 Agent",
+      "setup": "無",
+      "usage": "invoke_skill('agent_builder', {action: 'create', template: '...'})",
+      "actions": ["create", "list", "delete"]
+    },
+    "federation_sync": {
+      "description": "Federation 同步 — 多節點狀態同步",
+      "setup": "需設定 Federation 節點",
+      "usage": "invoke_skill('federation_sync', {action: 'sync'})",
+      "actions": ["sync", "status"]
+    },
+    "security_scan": {
+      "description": "安全掃描 — 代碼/依賴漏洞檢測",
+      "setup": "無",
+      "usage": "invoke_skill('security_scan', {action: 'scan', path: '.'})",
+      "actions": ["scan", "audit", "report"]
+    },
+    "approval_gate_sweep": {
+      "description": "審批閘門 — 待審任務掃描清理",
+      "setup": "無",
+      "usage": "invoke_skill('approval_gate_sweep', {})",
+      "actions": ["sweep", "list"]
+    },
+    "arctest": {
+      "description": "ArcTest — 自動測試執行器",
+      "setup": "無",
+      "usage": "invoke_skill('arctest', {action: 'run', path: 'tests/'})",
+      "actions": ["run", "report"]
+    },
+    "pexels_skill": {
+      "description": "Pexels 圖片/影片素材搜尋",
+      "setup": "PEXELS_API_KEY env var",
+      "usage": "invoke_skill('pexels_skill', {action: 'search_photos', query: 'sunset', per_page: 5})",
+      "actions": ["search_photos", "search_videos", "get_photo", "curated"]
+    },
+    "self_iteration": {
+      "description": "系統自我檢測與迭代",
+      "setup": "無",
+      "usage": "invoke_skill('self_iteration', {})"
+    },
+    "daily_report": {
+      "description": "生成每日早報",
+      "setup": "無",
+      "usage": "invoke_skill('daily_report', {})"
+    },
+    "google_workspace": {
+      "description": "Google Workspace 整合 — Gmail/Calendar/Drive/Sheets",
+      "setup": "OAuth2 credentials → ~/.arcmind/google_credentials.json, 首次 action=auth",
+      "deps": "pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib",
+      "usage": "invoke_skill('google_workspace', {action: 'gmail_send', to: '...', subject: '...', body: '...'})",
+      "actions": ["gmail_send", "gmail_search", "gmail_read", "calendar_list", "calendar_create", "calendar_delete", "drive_list", "drive_search", "drive_download", "sheets_read", "sheets_write", "sheets_create", "auth"]
+    },
+    "summarize_skill": {
+      "description": "內容摘要 — 文字/URL/檔案 LLM 摘要",
+      "setup": "無（使用現有 model_router）",
+      "usage": "invoke_skill('summarize_skill', {source: 'url', url: '...', style: 'detailed'})",
+      "actions": ["text", "url", "file"],
+      "styles": ["brief", "detailed", "bullet_points", "executive"]
+    },
+    "memory_kg": {
+      "description": "Knowledge Graph + Vector Search 記憶系統",
+      "setup": "無（使用 SQLite, DB: data/memory_kg.db）",
+      "usage": "invoke_skill('memory_kg', {action: 'store_fact', subject: 'ArcMind', predicate: 'is_a', object: 'AI Agent'})",
+      "actions": ["store_fact", "query_facts", "list_entities", "relate", "search_similar", "forget", "stats"]
+    },
+    "slack_skill": {
+      "description": "Slack 整合 — 訊息/頻道/搜尋",
+      "setup": "SLACK_BOT_TOKEN env var",
+      "deps": "pip install slack_sdk",
+      "usage": "invoke_skill('slack_skill', {action: 'send_message', channel: '#general', text: 'Hello'})",
+      "actions": ["send_message", "list_channels", "read_history", "react", "upload_file", "search_messages"]
+    },
+    "email_skill": {
+      "description": "Email — SMTP 發送 + IMAP 讀取",
+      "setup": "SMTP_HOST, SMTP_USER, SMTP_PASS, IMAP_HOST, IMAP_USER, IMAP_PASS env vars",
+      "usage": "invoke_skill('email_skill', {action: 'send', to: '...', subject: '...', body: '...'})",
+      "actions": ["send", "search", "read", "list_folders", "mark_read"]
+    },
+    "obsidian_skill": {
+      "description": "Obsidian Vault 整合 — 筆記 CRUD + 反向連結",
+      "setup": "OBSIDIAN_VAULT_PATH env var 或 config/obsidian.json",
+      "usage": "invoke_skill('obsidian_skill', {action: 'search_notes', query: 'ArcMind'})",
+      "actions": ["search_notes", "read_note", "create_note", "update_note", "list_notes", "get_backlinks", "set_vault_path"]
+    },
+    "image_gen": {
+      "description": "圖片生成 — DALL-E 3 / Stability AI / ComfyUI",
+      "setup": "OPENAI_API_KEY 或 STABILITY_API_KEY 或 COMFYUI_URL",
+      "usage": "invoke_skill('image_gen', {action: 'generate', prompt: 'a sunset', backend: 'dalle'})",
+      "actions": ["generate", "list_images"]
+    },
+    "weather_skill": {
+      "description": "天氣查詢 — 當前 + 多日預報",
+      "setup": "無（使用免費 API: wttr.in + Open-Meteo）",
+      "usage": "invoke_skill('weather_skill', {action: 'current', city: '台北'})",
+      "actions": ["current", "forecast", "set_location"]
+    },
+    "discord_skill": {
+      "description": "Discord Bot 整合 — 訊息/頻道/伺服器",
+      "setup": "DISCORD_BOT_TOKEN env var",
+      "usage": "invoke_skill('discord_skill', {action: 'send_message', channel_id: '...', content: 'Hello'})",
+      "actions": ["send_message", "list_guilds", "list_channels", "read_history", "add_reaction", "get_guild_info"]
+    },
+    "notion_skill": {
+      "description": "Notion API — 頁面/資料庫/區塊 CRUD",
+      "setup": "NOTION_API_KEY env var (from notion.so/my-integrations)",
+      "usage": "invoke_skill('notion_skill', {action: 'search', query: 'meeting notes'})",
+      "actions": ["search", "get_page", "get_page_content", "create_page", "update_page", "append_blocks", "query_database"]
+    },
+    "clipboard_skill": {
+      "description": "系統剪貼簿 — 讀取/寫入/歷史",
+      "setup": "無（macOS pbcopy/pbpaste）",
+      "usage": "invoke_skill('clipboard_skill', {action: 'read'})",
+      "actions": ["read", "write", "history", "clear", "append"]
+    },
+    "browser_skill": {
+      "description": "Headless 瀏覽器 — 網頁擷取/截圖/表單",
+      "setup": "pip install playwright && playwright install chromium (或 fallback Jina Reader)",
+      "usage": "invoke_skill('browser_skill', {action: 'fetch_page', url: 'https://example.com'})",
+      "actions": ["fetch_page", "screenshot", "extract_links", "fill_form", "evaluate_js"]
+    },
+    "translation_skill": {
+      "description": "多語言翻譯 — DeepL + LLM",
+      "setup": "DEEPL_API_KEY env var (可選, 無則用 LLM)",
+      "usage": "invoke_skill('translation_skill', {action: 'translate', text: 'Hello', target: 'zh-TW'})",
+      "actions": ["translate", "detect", "batch_translate"]
+    },
+    "screenshot_skill": {
+      "description": "螢幕截圖",
+      "setup": "無（macOS screencapture）",
+      "usage": "invoke_skill('screenshot_skill', {action: 'capture', mode: 'full'})",
+      "actions": ["capture", "list"]
+    },
+    "database_skill": {
+      "description": "通用 SQL 查詢 — SQLite/PostgreSQL/MySQL",
+      "setup": "SQLite 無需設定; PostgreSQL/MySQL 需 DATABASE_URL env var + pip install sqlalchemy",
+      "usage": "invoke_skill('database_skill', {action: 'query', db_path: 'data/memory_kg.db', sql: 'SELECT * FROM entities LIMIT 10'})",
+      "actions": ["query", "list_tables", "describe_table"]
+    },
+    "process_skill": {
+      "description": "系統進程管理 — 列出/搜尋/終止/資源監控",
+      "setup": "無（使用系統 ps/pgrep/kill）",
+      "usage": "invoke_skill('process_skill', {action: 'list', sort_by: 'cpu', limit: 20})",
+      "actions": ["list", "search", "kill", "resources"]
+    },
+    "archive_skill": {
+      "description": "壓縮/解壓 — zip/tar/gzip/bz2",
+      "setup": "無（使用 Python 標準庫）",
+      "usage": "invoke_skill('archive_skill', {action: 'compress', source: '/path/to/folder', format: 'zip'})",
+      "actions": ["compress", "extract", "list"]
+    },
+    "pdf_skill": {
+      "description": "PDF 操作 — 文字提取/合併/拆分/資訊",
+      "setup": "pip install PyMuPDF",
+      "usage": "invoke_skill('pdf_skill', {action: 'extract_text', pdf_path: '/path/to/file.pdf'})",
+      "actions": ["extract_text", "merge", "split", "info"]
+    },
+    "qrcode_skill": {
+      "description": "QR Code 生成/讀取",
+      "setup": "pip install qrcode[pil] (生成); pip install pyzbar Pillow (讀取)",
+      "usage": "invoke_skill('qrcode_skill', {action: 'generate', data: 'https://arcmind.dev'})",
+      "actions": ["generate", "read"]
+    },
+    "hash_skill": {
+      "description": "雜湊/編碼/加密工具",
+      "setup": "無（使用 Python 標準庫）",
+      "usage": "invoke_skill('hash_skill', {action: 'hash', text: 'hello', algorithm: 'sha256'})",
+      "actions": ["hash", "hash_file", "encode", "decode", "hmac", "uuid"]
+    },
+    "json_tool": {
+      "description": "JSON/YAML/CSV 資料處理",
+      "setup": "無（YAML 需 pip install pyyaml; JMESPath 需 pip install jmespath）",
+      "usage": "invoke_skill('json_tool', {action: 'convert', text: '{\"a\":1}', from: 'json', to: 'yaml'})",
+      "actions": ["parse", "convert", "query", "merge", "validate"]
+    },
+    "docker_skill": {
+      "description": "Docker 容器管理",
+      "setup": "需安裝 Docker CLI (docker command)",
+      "usage": "invoke_skill('docker_skill', {action: 'list_containers'})",
+      "actions": ["list_containers", "list_images", "start", "stop", "logs", "exec", "run", "stats"]
+    },
+    "ssh_skill": {
+      "description": "SSH 遠端執行",
+      "setup": "需有 SSH key 或密碼（~/.ssh/config 別名亦可）",
+      "usage": "invoke_skill('ssh_skill', {action: 'exec', host: 'my-server', user: 'root', command: 'uptime'})",
+      "actions": ["exec", "upload", "download", "test"]
+    },
+    "network_skill": {
+      "description": "網路診斷 — ping/DNS/port/HTTP/traceroute/whois",
+      "setup": "無（使用系統 ping/dig/traceroute）",
+      "usage": "invoke_skill('network_skill', {action: 'ping', host: 'google.com'})",
+      "actions": ["ping", "dns", "port_check", "http", "traceroute", "whois"]
+    },
+    "regex_skill": {
+      "description": "正規表達式工具",
+      "setup": "無（使用 Python re）",
+      "usage": "invoke_skill('regex_skill', {action: 'find_all', pattern: '\\\\d+', text: 'abc123def456'})",
+      "actions": ["test", "find_all", "replace", "extract_groups", "split", "common_patterns"]
+    },
+    "text_tool": {
+      "description": "文字處理 — diff/word count/格式化/提取",
+      "setup": "無（使用 Python 標準庫）",
+      "usage": "invoke_skill('text_tool', {action: 'word_count', text: '...'})",
+      "actions": ["diff", "word_count", "format", "extract", "template"]
+    },
+    "notification_skill": {
+      "description": "系統通知 — macOS 通知/語音/對話框",
+      "setup": "無（macOS osascript / Linux notify-send）",
+      "usage": "invoke_skill('notification_skill', {action: 'notify', message: '任務完成！'})",
+      "actions": ["notify", "say", "dialog"]
+    },
+    "cron_skill": {
+      "description": "CRON 排程管理",
+      "setup": "無（任務存於 config/cron_tasks.json）",
+      "usage": "invoke_skill('cron_skill', {action: 'add', name: 'daily_news', schedule: '0 8 * * *', skill: 'daily_report'})",
+      "actions": ["list", "add", "remove", "toggle", "update"]
+    },
+    "git_skill": {
+      "description": "本地 Git 操作",
+      "setup": "無（使用系統 git CLI）",
+      "usage": "invoke_skill('git_skill', {action: 'status', repo_path: '/path/to/repo'})",
+      "actions": ["status", "log", "diff", "branch", "commit", "stash", "checkout"]
+    },
+    "api_tester": {
+      "description": "HTTP API 測試",
+      "setup": "無（使用 Python urllib）",
+      "usage": "invoke_skill('api_tester', {action: 'request', url: 'https://api.example.com/users', method: 'GET'})",
+      "actions": ["request", "chain"]
+    },
+    "ocr_skill": {
+      "description": "OCR 文字辨識",
+      "setup": "macOS: 內建 Vision framework; Linux: brew install tesseract",
+      "usage": "invoke_skill('ocr_skill', {action: 'recognize', image_path: '/path/to/image.png'})",
+      "actions": ["recognize", "batch"]
+    },
+    "marp_skill": {
+      "description": "Marp 簡報製作 — Markdown → PPT/PDF/HTML",
+      "setup": "npm install -g @marp-team/marp-cli（或自動用 npx）",
+      "deps": ["@marp-team/marp-cli"],
+      "usage": "invoke_skill('marp_skill', {action: 'create', title: 'My Talk', theme: 'gaia', format: 'pptx', slides: [{title: 'Title Slide', subtitle: 'Author'}, {title: 'Agenda', bullets: ['Item 1', 'Item 2']}, {title: 'Code', code: 'print(\"hello\")', code_lang: 'python'}]})",
+      "actions": ["create", "convert", "list_themes", "preview", "save_template"],
+      "themes": ["default", "gaia", "uncover"],
+      "formats": ["html", "pdf", "pptx", "png", "jpeg"],
+      "slide_fields": ["title", "subtitle", "content", "bullets", "image", "code", "code_lang", "table", "notes", "class", "backgroundColor", "backgroundImage"]
+    },
+    "presenton_skill": {
+      "description": "精美 AI 簡報生成 — Presenton (Gamma/Beautiful.ai 替代品)",
+      "setup": "docker run -d --name presenton -p 5000:80 ghcr.io/presenton/presenton:latest",
+      "usage": "invoke_skill('presenton_skill', {action: 'generate', content: 'AI 趨勢報告', n_slides: 5, language: 'Chinese'})",
+      "actions": ["generate", "list", "status"]
+    },
+    "email_kb_skill": {
+      "description": "PST 郵件知識庫 — 讀取 .pst 檔，分類建立知識庫供 Agent 搜尋學習",
+      "usage": "invoke_skill('email_kb_skill', {action: 'import_pst', pst_path: '/path/to/file.pst'})",
+      "actions": ["import_pst", "search", "stats", "browse", "export", "read"]
+    }
+  }
+}

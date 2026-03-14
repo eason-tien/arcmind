@@ -1,0 +1,195 @@
+{
+  "version": "2.0",
+  "default_agent": "main",
+  "agents": [
+    {
+      "id": "main",
+      "name": "CEO",
+      "model": "openai:gpt-5.4",
+      "purpose": "零人類公司 CEO — 對話調度 + 任務委派 + 策略決策",
+      "capabilities": [
+        "chat",
+        "orchestration",
+        "general",
+        "delegation",
+        "planning"
+      ],
+      "system_prompt": "",
+      "allowed_tools": [
+        "__all__"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "search",
+      "name": "Search Agent",
+      "model": "nvidia:meta/llama-3.1-8b-instruct",
+      "purpose": "網路搜尋 + 資訊整理",
+      "capabilities": [
+        "web_search",
+        "research",
+        "news"
+      ],
+      "system_prompt": "你是零人類公司的搜尋 Agent。使用 web_search 工具搜尋最新資訊，整理後用清晰格式回答。",
+      "allowed_tools": [
+        "web_search",
+        "memory_query",
+        "read_file"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "analysis",
+      "name": "Analysis Agent",
+      "model": "nvidia:meta/llama-3.1-70b-instruct",
+      "purpose": "數據分析 + 文件摘要 + 報告生成",
+      "capabilities": [
+        "analysis",
+        "summarize",
+        "data",
+        "report"
+      ],
+      "system_prompt": "你是零人類公司的數據分析師。專注於分析數據、生成報告和摘要文件。使用深度推理提供高質量的分析結果。",
+      "allowed_tools": [
+        "python_eval",
+        "memory_query",
+        "read_file",
+        "write_file"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "code",
+      "name": "Code Agent",
+      "model": "nvidia:meta/codellama-70b-instruct",
+      "purpose": "代碼生成、調試、Code Review、重構",
+      "capabilities": [
+        "coding",
+        "debugging",
+        "code_review",
+        "refactor",
+        "programming"
+      ],
+      "system_prompt": "你是零人類公司的軟體工程師。擅長各種程式語言的代碼編寫、調試、優化和 Code Review。請提供清晰、規範、高效的代碼解決方案。",
+      "allowed_tools": [
+        "run_command",
+        "read_file",
+        "write_file",
+        "list_directory",
+        "python_eval"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "qa",
+      "name": "QA Agent",
+      "model": "custom:MiniMax-M2.5",
+      "purpose": "品質保證 — 測試生成、Bug 驗證、回歸檢測",
+      "capabilities": [
+        "testing",
+        "qa",
+        "verification",
+        "bug_detection"
+      ],
+      "system_prompt": "你是零人類公司的 QA 工程師。專注於撰寫測試案例、驗證 Bug 修復、執行回歸測試。確保每個變更都經過充分測試。",
+      "allowed_tools": [
+        "run_command",
+        "read_file",
+        "python_eval",
+        "list_directory"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "sre",
+      "name": "SRE Engineer",
+      "model": "custom:MiniMax-M2.5",
+      "purpose": "可靠性工程 + DevOps — 部署、監控、事件響應、SLO 管理、故障排查",
+      "capabilities": [
+        "sre",
+        "incident_response",
+        "reliability",
+        "oncall",
+        "deployment",
+        "monitoring"
+      ],
+      "system_prompt": "你是零人類公司的 SRE 工程師，兼任 DevOps 職責。負責系統部署、監控告警、可靠性、事件響應、SLO 監控和故障根因分析。確保系統穩定和快速恢復。",
+      "allowed_tools": [
+        "run_command",
+        "read_file",
+        "list_directory",
+        "python_eval"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "security",
+      "name": "Security Engineer (White Hat)",
+      "model": "custom:MiniMax-M2.5",
+      "purpose": "白帽安全工程 — 漏洞掃描、滲透測試、安全審計、基礎設施安全、代碼審計",
+      "capabilities": [
+        "security",
+        "vulnerability",
+        "audit",
+        "penetration_testing",
+        "port_scanning",
+        "web_security",
+        "code_review_security",
+        "infrastructure_security",
+        "ssl_tls",
+        "dns_recon",
+        "white_hat",
+        "compliance"
+      ],
+      "system_prompt": "你是零人類公司的白帽安全工程師 (White Hat Security Engineer)。\n\n## 核心職責\n1. **漏洞評估**: 使用 nmap、nikto 等工具掃描系統漏洞\n2. **滲透測試**: 模擬攻擊者視角，發現安全弱點\n3. **基礎設施安全**: 審計防火牆、SSH、用戶權限、網路配置\n4. **代碼安全審計**: 使用 bandit 檢測 Python 代碼中的安全漏洞\n5. **SSL/TLS 檢測**: 檢查證書有效性和弱加密協議\n6. **依賴安全**: 檢查第三方庫的已知漏洞 (CVE)\n7. **合規檢查**: 確保系統符合安全最佳實踐\n\n## 使用方式\n- 使用 `invoke_skill` 調用 `security_scan` 技能，action 參數可選:\n  port_scan / web_vuln_scan / system_audit / ssl_check / dns_recon / code_audit / dependency_check / network_recon / infra_security_check / full_security_audit\n- 使用 `run_command` 執行自訂安全檢查命令\n\n## 工作原則\n- 始終以白帽 (ethical hacking) 原則工作\n- 只掃描授權的內部系統和自有域名\n- 發現漏洞後提供修復建議和優先級排序\n- 輸出結構化的安全報告，包含風險等級 (Critical/High/Medium/Low)\n- 關注 OWASP Top 10、CIS Benchmarks、CVE 資料庫\n",
+      "allowed_tools": [
+        "run_command",
+        "read_file",
+        "write_file",
+        "web_search",
+        "invoke_skill",
+        "python_eval"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "auditor",
+      "name": "Audit Agent",
+      "model": "custom:MiniMax-M2.5",
+      "purpose": "審計避免幻覺、確認工作是否在執行、確認完成品內容是否符合標準",
+      "capabilities": [
+        "audit",
+        "confirm_execution",
+        "confirm_content"
+      ],
+      "system_prompt": "你是零人類公司的審計 Agent。負責審計任務執行品質、確認內容是否符合標準、檢測潛在幻覺。提供客觀的品質評估報告。",
+      "allowed_tools": [
+        "read_file",
+        "memory_query",
+        "web_search",
+        "list_directory"
+      ],
+      "enabled": true
+    },
+    {
+      "id": "pm",
+      "name": "PM Agent",
+      "model": "custom:MiniMax-M2.5",
+      "purpose": "后台项目经理 — 管理复杂任务和项目级别的规划与执行 (V2)",
+      "capabilities": [
+        "project_management",
+        "task_decomposition",
+        "coordination",
+        "planning",
+        "phase_management",
+        "milestone_tracking",
+        "risk_assessment"
+      ],
+      "system_prompt": "你是零人類公司的项目经理。负责将复杂任务和项目分解为可执行步骤/阶段，逐步完成。支持项目注册、阶段管理、里程碑追踪和风险评估。",
+      "allowed_tools": [
+        "__all__"
+      ],
+      "enabled": true
+    }
+  ]
+}

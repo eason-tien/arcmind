@@ -1,0 +1,35 @@
+# Caddy 反向代理配置
+# 所有服务通过域名访问
+
+:80 {
+    # Prometheus
+    reverse_proxy /prometheus* prometheus:9090
+    
+    # AlertManager
+    reverse_proxy /alertmanager* alertmanager:9093
+    
+    # Grafana
+    reverse_proxy /grafana* grafana:3000
+    
+    # node-exporter
+    reverse_proxy /node-exporter* node-exporter:9100
+    
+    # cAdvisor
+    reverse_proxy /cadvisor* cadvisor:8080
+    
+    # Blackbox
+    reverse_proxy /blackbox* blackbox-exporter:9115
+    
+    # Loki
+    reverse_proxy /loki* loki:3100
+    
+    # 默认重定向到 Grafana
+    reverse_proxy grafana:3000
+}
+
+# HTTPS 配置示例 (需要域名)
+# arcmind.yourdomain.com {
+#     reverse_proxy /prometheus* prometheus:9090
+#     reverse_proxy /grafana* grafana:3000
+#     tls admin@yourdomain.com
+# }

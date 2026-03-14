@@ -1,0 +1,14 @@
+# 🎬 Video Production Requirements
+
+# Python dependencies for video compilation
+moviepy>=1.0.3
+Pillow>=9.0.0
+
+# Optional: For more advanced animations
+# manim>=0.17.0
+
+# For audio processing (optional)
+# pydub>=0.25.1
+
+# Install with:
+# pip install -r requirements.txt

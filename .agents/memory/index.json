@@ -1,0 +1,35 @@
+{
+    "categories": {
+        "preference": 2,
+        "project": 2,
+        "fact": 3,
+        "decision": 2,
+        "observation": 0
+    },
+    "tags": {
+        "user": 2,
+        "language": 1,
+        "chinese": 1,
+        "workflow": 2,
+        "audit": 1,
+        "arcmind": 6,
+        "project": 2,
+        "path": 1,
+        "android": 1,
+        "memory": 3,
+        "sqlite": 1,
+        "migration": 1,
+        "tests": 1,
+        "status": 1,
+        "python": 1,
+        "asyncio": 1,
+        "compatibility": 1,
+        "skills": 1,
+        "trading": 1,
+        "antigravity": 2,
+        "design": 1,
+        "harness": 1
+    },
+    "total_entries": 10,
+    "last_updated": "2026-03-08T08:15:00"
+}
