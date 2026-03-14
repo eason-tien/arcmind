@@ -7,11 +7,16 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8100';
 
 interface Agent {
     id: string;
+    name?: string;
     title?: string;
     model?: string;
+    default_model?: string;
     role?: string;
+    description?: string;
     status?: string;
     allowed_tools?: string[];
+    capabilities?: string[];
+    enabled?: boolean;
     is_core?: boolean;
 }
 
@@ -77,14 +82,14 @@ export function AgentManager() {
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
-                            <span className="font-medium text-foreground text-sm">{agent.title || agent.id}</span>
+                        <span className="font-medium text-foreground text-sm">{agent.name || agent.title || agent.id}</span>
                             {agent.is_core && (
                                 <span className="text-[10px] font-mono bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">CORE</span>
                             )}
                         </div>
                         <div className="flex items-center gap-3 mt-1">
                             <span className="text-xs text-muted-foreground font-mono">{agent.id}</span>
-                            {agent.model && <span className="text-[10px] text-muted-foreground">{agent.model}</span>}
+                            {(agent.model || agent.default_model) && <span className="text-[10px] text-muted-foreground">{agent.model || agent.default_model}</span>}
                         </div>
                     </div>
                 </div>

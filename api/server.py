@@ -490,6 +490,98 @@ def create_app() -> FastAPI:
         model_router._rules.default = req.model
         return {"status": "ok", "default_model": req.model}
 
+    # ── Tool Registry (for UI ToolBrowser) ────────────────────────────────
+    @app.get("/v1/tools")
+    def list_tools():
+        """List all registered tools with their schemas."""
+        from runtime.tool_loop import tool_registry
+        schemas = tool_registry.get_schemas()
+        return {"tools": schemas, "total": len(schemas)}
+
+    # ── Agent Registry (for UI AgentManager) ──────────────────────────────
+    @app.get("/v1/agents")
+    def list_agents():
+        """List all agents in the Zero-Human Company."""
+        from runtime.agent_registry import agent_registry
+        agents = agent_registry.list_agents()
+        return {"agents": agents, "total": len(agents)}
+
+    @app.post("/v1/agents/{agent_id}/hire")
+    async def hire_agent(agent_id: str, request: Request):
+        """Hire a new agent from template."""
+        from runtime.agent_registry import agent_registry
+        body = await request.json()
+        result = agent_registry.add_agent(
+            agent_id=agent_id,
+            name=body.get("name", agent_id),
+            model=body.get("model", "ollama"),
+            purpose=body.get("purpose", ""),
+            capabilities=body.get("capabilities", []),
+            system_prompt=body.get("system_prompt", ""),
+        )
+        return {"status": "ok", "message": result}
+
+    @app.delete("/v1/agents/{agent_id}")
+    def fire_agent(agent_id: str):
+        """Fire (remove) an agent. Cannot fire CEO."""
+        from runtime.agent_registry import agent_registry
+        result = agent_registry.remove_agent(agent_id)
+        return {"status": "ok", "message": result}
+
+    # ── Token Analytics (for UI TokenAnalytics) ───────────────────────────
+    @app.get("/v1/analytics/tokens")
+    def token_analytics():
+        """Aggregate token usage stats from lifecycle and model router."""
+        from runtime.lifecycle import lifecycle
+        from runtime.model_router import model_router
+
+        summary = lifecycle.summary()
+        providers = model_router.list_providers()
+
+        # Extract token data from lifecycle summary
+        total_tokens = summary.get("total_tokens", 0)
+        total_requests = summary.get("total_requests", 0)
+
+        # Per-provider breakdown (from lifecycle if available)
+        provider_stats = []
+        for p in providers:
+            provider_stats.append({
+                "provider": p.get("provider", "unknown"),
+                "enabled": p.get("enabled", True),
+                "models": p.get("models", []),
+                "tokens": 0,  # Will be enriched when per-provider tracking is added
+                "requests": 0,
+            })
+
+        # Cost estimation (~$0.003 per 1K tokens blended average)
+        estimated_cost = round(total_tokens * 0.003 / 1000, 4)
+
+        return {
+            "total_tokens": total_tokens,
+            "total_requests": total_requests,
+            "estimated_cost_usd": estimated_cost,
+            "providers": provider_stats,
+            "sessions": [],  # Placeholder for per-session breakdown
+        }
+
+    # ── Incident History (for UI AuditLog) ────────────────────────────────
+    @app.get("/v1/iterations/incidents")
+    def get_incidents():
+        """Get the last 50 watchdog incidents from evidence file."""
+        import json as _json
+        from pathlib import Path as _Path
+
+        evidence_path = _Path(__file__).resolve().parent.parent / "evidence" / "ARCMIND_VERIFY.json"
+        incidents = []
+        try:
+            if evidence_path.exists():
+                data = _json.loads(evidence_path.read_text(encoding="utf-8"))
+                incidents = data.get("incidents", [])[-50:]
+        except Exception as e:
+            logger.warning("[API] Failed to read incidents: %s", e)
+
+        return {"incidents": incidents, "total": len(incidents)}
+
     # ── Routers ───────────────────────────────────────────────────────────────
     from api.routes.agent_routes import router as agent_router
     from api.routes.skill_routes import router as skill_router

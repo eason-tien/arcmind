@@ -7,6 +7,11 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8100';
 interface ToolSchema {
     name: string;
     description?: string;
+    input_schema?: {
+        type?: string;
+        properties?: Record<string, { type: string; description?: string }>;
+        required?: string[];
+    };
     parameters?: {
         type: string;
         properties?: Record<string, { type: string; description?: string }>;
@@ -93,7 +98,8 @@ export function ToolBrowser() {
                 ) : (
                     filtered.map((tool, i) => {
                         const isExpanded = expandedTool === tool.name;
-                        const paramCount = tool.parameters?.properties ? Object.keys(tool.parameters.properties).length : 0;
+                        const schema = tool.input_schema || tool.parameters;
+                        const paramCount = schema?.properties ? Object.keys(schema.properties).length : 0;
 
                         return (
                             <motion.div key={tool.name} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.01 }}
@@ -121,14 +127,14 @@ export function ToolBrowser() {
                                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                                             <div className="px-3 pb-3 border-t border-border/30 pt-2">
                                                 {tool.description && <p className="text-xs text-muted-foreground mb-2">{tool.description}</p>}
-                                                {tool.parameters?.properties && (
+                                                {schema?.properties && (
                                                     <div className="space-y-1">
                                                         <span className="text-[10px] font-semibold text-foreground/60 uppercase tracking-wider">Parameters</span>
-                                                        {Object.entries(tool.parameters.properties).map(([key, val]) => (
+                                                        {Object.entries(schema.properties).map(([key, val]) => (
                                                             <div key={key} className="flex items-start gap-2 text-xs font-mono bg-black/20 px-2 py-1.5 rounded">
                                                                 <span className="text-cyan-400">{key}</span>
                                                                 <span className="text-muted-foreground">: {val.type}</span>
-                                                                {tool.parameters?.required?.includes(key) && <span className="text-red-400 text-[10px]">*</span>}
+                                                                {schema?.required?.includes(key) && <span className="text-red-400 text-[10px]">*</span>}
                                                                 {val.description && <span className="text-muted-foreground/60 ml-2">— {val.description}</span>}
                                                             </div>
                                                         ))}
