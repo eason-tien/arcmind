@@ -1,14 +1,43 @@
-# 🎬 Video Production Requirements
+# ── ArcMind Core Dependencies ──────────────────────────────
 
-# Python dependencies for video compilation
-moviepy>=1.0.3
-Pillow>=9.0.0
+# Web framework
+fastapi>=0.110.0
+uvicorn>=0.27.0
+sse-starlette>=2.0.0
+pydantic>=2.6.0
+pydantic-settings>=2.1.0
 
-# Optional: For more advanced animations
-# manim>=0.17.0
+# LLM providers
+openai>=1.12.0
+httpx>=0.27.0
+httpx-sse>=0.4.0
 
-# For audio processing (optional)
-# pydub>=0.25.1
+# Database
+SQLAlchemy>=2.0.25
 
-# Install with:
-# pip install -r requirements.txt
+# Memory & embeddings
+chromadb>=0.4.22
+
+# Scheduling
+APScheduler>=3.10.4
+
+# HTTP & networking
+aiohttp>=3.9.0
+requests>=2.31.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Telegram channel (optional)
+python-telegram-bot>=21.0
+
+# ── Optional: Skill-specific deps ──────────────────────────
+# Uncomment as needed:
+# python-docx>=1.1.0       # Email KB: Word attachment extraction
+# openpyxl>=3.1.2           # Email KB: Excel attachment extraction
+# python-pptx>=0.6.23       # Email KB: PowerPoint attachment extraction
+# PyPDF2>=3.0.0             # Email KB: PDF extraction
+# beautifulsoup4>=4.12.0    # Web scraping
+# playwright>=1.40.0        # Browser automation
+# moviepy>=1.0.3            # Video production
+# Pillow>=9.0.0             # Image processing
