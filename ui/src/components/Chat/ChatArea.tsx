@@ -6,6 +6,9 @@ import { ChatInput } from './ChatInput';
 import { VoiceOverlay } from './VoiceOverlay';
 import { LiveFeed } from '../Dashboard/LiveFeed';
 import { MemoryViewer } from '../Dashboard/MemoryViewer';
+import { SkillManager } from '../Admin/SkillManager';
+import { CronDashboard } from '../Admin/CronDashboard';
+import { SystemStatus } from '../Admin/SystemStatus';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 
@@ -84,6 +87,9 @@ export function ChatArea() {
 
                 {activeTab === 'dashboard' && <LiveFeed />}
                 {activeTab === 'memory' && <MemoryViewer />}
+                {activeTab === 'skills' && <SkillManager />}
+                {activeTab === 'cron' && <CronDashboard />}
+                {activeTab === 'system' && <SystemStatus />}
 
             </div>
             <VoiceOverlay />

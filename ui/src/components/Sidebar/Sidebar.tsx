@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Plus, Settings, BrainCircuit, X, Activity, Database } from 'lucide-react';
+import { MessageSquare, Plus, Settings, BrainCircuit, X, Activity, Database, Wrench, Clock, Server } from 'lucide-react';
 import { SettingsModal } from '../Settings/SettingsModal';
 import { useChatStore } from '../../store/chatStore';
 import { cn } from '../../lib/utils';
@@ -93,6 +93,49 @@ export function Sidebar() {
                             >
                                 <Database size={16} className={activeTab === 'memory' ? "text-primary" : "text-muted-foreground"} />
                                 <span className="flex-1">{t('sidebar.view_memory')}</span>
+                            </button>
+
+                            <div className="text-xs font-medium text-muted-foreground mt-4 mb-2 px-2 uppercase tracking-wider">
+                                管理
+                            </div>
+
+                            <button
+                                onClick={() => setActiveTab('skills')}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all text-left",
+                                    activeTab === 'skills'
+                                        ? "bg-emerald-500/15 text-emerald-400 font-medium"
+                                        : "text-foreground/80 hover:bg-secondary/50"
+                                )}
+                            >
+                                <Wrench size={16} className={activeTab === 'skills' ? "text-emerald-400" : "text-muted-foreground"} />
+                                <span className="flex-1">技能管理</span>
+                            </button>
+
+                            <button
+                                onClick={() => setActiveTab('cron')}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all text-left",
+                                    activeTab === 'cron'
+                                        ? "bg-orange-500/15 text-orange-400 font-medium"
+                                        : "text-foreground/80 hover:bg-secondary/50"
+                                )}
+                            >
+                                <Clock size={16} className={activeTab === 'cron' ? "text-orange-400" : "text-muted-foreground"} />
+                                <span className="flex-1">排程任務</span>
+                            </button>
+
+                            <button
+                                onClick={() => setActiveTab('system')}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all text-left",
+                                    activeTab === 'system'
+                                        ? "bg-blue-500/15 text-blue-400 font-medium"
+                                        : "text-foreground/80 hover:bg-secondary/50"
+                                )}
+                            >
+                                <Server size={16} className={activeTab === 'system' ? "text-blue-400" : "text-muted-foreground"} />
+                                <span className="flex-1">系統總覽</span>
                             </button>
                         </div>
 
