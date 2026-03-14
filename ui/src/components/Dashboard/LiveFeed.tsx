@@ -3,6 +3,9 @@ import { Activity, Terminal, Code2, Globe, Bot } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8100';
+const WS_BASE = API_BASE.replace(/^http/, 'ws');
+
 interface LogEntry {
     id: string;
     timestamp: number;
@@ -18,7 +21,7 @@ export function LiveFeed() {
     const [isConnected, setIsConnected] = useState(false);
 
     useEffect(() => {
-        const ws = new WebSocket('ws://localhost:8100/ws/activity');
+        const ws = new WebSocket(`${WS_BASE}/ws/activity`);
 
         ws.onopen = () => {
             setIsConnected(true);

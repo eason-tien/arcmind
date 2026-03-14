@@ -5,6 +5,8 @@ import { cn } from '../../lib/utils';
 import { useTranslation } from 'react-i18next';
 import { SystemMonitor } from './SystemMonitor';
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8100';
+
 interface SettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -25,7 +27,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     useEffect(() => {
         if (isOpen) {
             // Fetch available models from backend
-            fetch('/v1/models')
+            fetch(`${API_BASE}/v1/models`)
                 .then(res => res.json())
                 .then(data => {
                     setProviders(data.available_providers || []);
@@ -58,7 +60,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            await fetch('/v1/models/default', {
+            await fetch(`${API_BASE}/v1/models/default`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ model: selectedModel })

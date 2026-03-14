@@ -53,6 +53,7 @@ interface ChatState {
     submitVoiceAudio?: (blob: Blob) => void;
     sendMessage: (text: string) => Promise<void>;
     deleteSession: (sessionId: string) => Promise<void>;
+    createSession: () => void;
 
     fetchSessions: () => Promise<void>;
     fetchMessages: (sessionId: string) => Promise<void>;
@@ -70,6 +71,17 @@ export const useChatStore = create<ChatState>((set) => ({
     ],
     activeSessionId: '1',
     setActiveSession: (id) => set({ activeSessionId: id, activeTab: 'chat' }),
+
+    createSession: () => {
+        const newId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        const newSession = { id: newId, title: 'New Conversation', updatedAt: Date.now() };
+        set((state) => ({
+            sessions: [newSession, ...state.sessions],
+            activeSessionId: newId,
+            messages: [],
+            activeTab: 'chat' as AppTab
+        }));
+    },
 
     messages: [],
     addMessage: (msg) => set((state) => ({ messages: [...state.messages, msg] })),

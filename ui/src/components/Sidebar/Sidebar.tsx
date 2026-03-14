@@ -1,13 +1,13 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Plus, Settings, BrainCircuit, X, Activity, Database, Wrench, Clock, Server } from 'lucide-react';
+import { MessageSquare, Plus, Settings, BrainCircuit, X, Activity, Database, Wrench, Clock, Server, Trash2 } from 'lucide-react';
 import { SettingsModal } from '../Settings/SettingsModal';
 import { useChatStore } from '../../store/chatStore';
 import { cn } from '../../lib/utils';
 import { useTranslation } from 'react-i18next';
 
 export function Sidebar() {
-    const { isSidebarOpen, toggleSidebar, sessions, activeSessionId, setActiveSession, fetchSessions, activeTab, setActiveTab } = useChatStore();
+    const { isSidebarOpen, toggleSidebar, sessions, activeSessionId, setActiveSession, fetchSessions, activeTab, setActiveTab, createSession, deleteSession } = useChatStore();
     const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
     const { t } = useTranslation();
 
@@ -44,7 +44,10 @@ export function Sidebar() {
 
                         {/* New Chat Button */}
                         <div className="p-4">
-                            <button className="w-full flex items-center justify-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-xl py-2.5 transition-all active:scale-95 font-medium shadow-[0_0_15px_rgba(139,92,246,0.15)] hover:shadow-[0_0_20px_rgba(139,92,246,0.3)]">
+                            <button
+                                onClick={createSession}
+                                className="w-full flex items-center justify-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-xl py-2.5 transition-all active:scale-95 font-medium shadow-[0_0_15px_rgba(139,92,246,0.15)] hover:shadow-[0_0_20px_rgba(139,92,246,0.3)]"
+                            >
                                 <Plus size={18} />
                                 <span>{t('sidebar.new_chat')}</span>
                             </button>
@@ -148,19 +151,30 @@ export function Sidebar() {
                                 {t('sidebar.recent')}
                             </div>
                             {sessions.map(session => (
-                                <button
+                                <div
                                     key={session.id}
-                                    onClick={() => setActiveSession(session.id)}
-                                    className={cn(
-                                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all text-left",
-                                        activeSessionId === session.id
-                                            ? "bg-primary/15 text-primary font-medium"
-                                            : "text-foreground/80 hover:bg-secondary/50"
-                                    )}
+                                    className="group/session relative"
                                 >
-                                    <MessageSquare size={16} className={activeSessionId === session.id ? "text-primary" : "text-muted-foreground"} />
-                                    <span className="truncate flex-1">{session.title}</span>
-                                </button>
+                                    <button
+                                        onClick={() => setActiveSession(session.id)}
+                                        className={cn(
+                                            "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all text-left",
+                                            activeSessionId === session.id
+                                                ? "bg-primary/15 text-primary font-medium"
+                                                : "text-foreground/80 hover:bg-secondary/50"
+                                        )}
+                                    >
+                                        <MessageSquare size={16} className={activeSessionId === session.id ? "text-primary" : "text-muted-foreground"} />
+                                        <span className="truncate flex-1">{session.title}</span>
+                                    </button>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); deleteSession(session.id); }}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover/session:opacity-100"
+                                        title="刪除對話"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
                             ))}
                         </div>
 

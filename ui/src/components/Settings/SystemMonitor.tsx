@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Activity, BrainCircuit, Database, ListTree, RefreshCcw, Network } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8100';
+
 export function SystemMonitor() {
     const { t } = useTranslation();
     const [stats, setStats] = useState<any>(null);
@@ -11,7 +13,7 @@ export function SystemMonitor() {
 
     const fetchStats = async () => {
         try {
-            const res = await fetch('/healthz');
+            const res = await fetch(`${API_BASE}/healthz`);
             if (!res.ok) throw new Error('API Error');
             const data = await res.json();
             setStats(data);
