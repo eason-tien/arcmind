@@ -1,15 +1,17 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Plus, Settings, BrainCircuit, X, Activity, Database, Wrench, Clock, Server, Trash2 } from 'lucide-react';
+import { MessageSquare, Plus, Settings, BrainCircuit, X, Activity, Database, Wrench, Clock, Server, Trash2, Shield, Bot, Cpu, BarChart3, Globe, Sun, Moon } from 'lucide-react';
 import { SettingsModal } from '../Settings/SettingsModal';
 import { useChatStore } from '../../store/chatStore';
 import { cn } from '../../lib/utils';
 import { useTranslation } from 'react-i18next';
+import { useTheme } from '../../lib/ThemeProvider';
 
 export function Sidebar() {
     const { isSidebarOpen, toggleSidebar, sessions, activeSessionId, setActiveSession, fetchSessions, activeTab, setActiveTab, createSession, deleteSession } = useChatStore();
     const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
     const { t } = useTranslation();
+    const { theme, toggleTheme } = useTheme();
 
     React.useEffect(() => {
         fetchSessions();
@@ -140,6 +142,71 @@ export function Sidebar() {
                                 <Server size={16} className={activeTab === 'system' ? "text-blue-400" : "text-muted-foreground"} />
                                 <span className="flex-1">系統總覽</span>
                             </button>
+
+                            <button
+                                onClick={() => setActiveTab('audit')}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all text-left",
+                                    activeTab === 'audit'
+                                        ? "bg-red-500/15 text-red-400 font-medium"
+                                        : "text-foreground/80 hover:bg-secondary/50"
+                                )}
+                            >
+                                <Shield size={16} className={activeTab === 'audit' ? "text-red-400" : "text-muted-foreground"} />
+                                <span className="flex-1">審計日誌</span>
+                            </button>
+
+                            <button
+                                onClick={() => setActiveTab('agents')}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all text-left",
+                                    activeTab === 'agents'
+                                        ? "bg-violet-500/15 text-violet-400 font-medium"
+                                        : "text-foreground/80 hover:bg-secondary/50"
+                                )}
+                            >
+                                <Bot size={16} className={activeTab === 'agents' ? "text-violet-400" : "text-muted-foreground"} />
+                                <span className="flex-1">Agent 管理</span>
+                            </button>
+
+                            <button
+                                onClick={() => setActiveTab('tools')}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all text-left",
+                                    activeTab === 'tools'
+                                        ? "bg-cyan-500/15 text-cyan-400 font-medium"
+                                        : "text-foreground/80 hover:bg-secondary/50"
+                                )}
+                            >
+                                <Cpu size={16} className={activeTab === 'tools' ? "text-cyan-400" : "text-muted-foreground"} />
+                                <span className="flex-1">工具註冊</span>
+                            </button>
+
+                            <button
+                                onClick={() => setActiveTab('tokens')}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all text-left",
+                                    activeTab === 'tokens'
+                                        ? "bg-amber-500/15 text-amber-400 font-medium"
+                                        : "text-foreground/80 hover:bg-secondary/50"
+                                )}
+                            >
+                                <BarChart3 size={16} className={activeTab === 'tokens' ? "text-amber-400" : "text-muted-foreground"} />
+                                <span className="flex-1">Token 分析</span>
+                            </button>
+
+                            <button
+                                onClick={() => setActiveTab('federation')}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all text-left",
+                                    activeTab === 'federation'
+                                        ? "bg-indigo-500/15 text-indigo-400 font-medium"
+                                        : "text-foreground/80 hover:bg-secondary/50"
+                                )}
+                            >
+                                <Globe size={16} className={activeTab === 'federation' ? "text-indigo-400" : "text-muted-foreground"} />
+                                <span className="flex-1">Federation</span>
+                            </button>
                         </div>
 
                         {/* Divider */}
@@ -179,7 +246,14 @@ export function Sidebar() {
                         </div>
 
                         {/* Footer Settings */}
-                        <div className="p-4 border-t border-border/40">
+                        <div className="p-4 border-t border-border/40 space-y-1">
+                            <button
+                                onClick={toggleTheme}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-foreground/80 hover:bg-secondary/50 transition-all"
+                            >
+                                {theme === 'dark' ? <Sun size={18} className="text-yellow-400" /> : <Moon size={18} className="text-blue-400" />}
+                                <span>{theme === 'dark' ? '淺色模式' : '深色模式'}</span>
+                            </button>
                             <button
                                 onClick={() => setIsSettingsOpen(true)}
                                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-foreground/80 hover:bg-secondary/50 transition-all"

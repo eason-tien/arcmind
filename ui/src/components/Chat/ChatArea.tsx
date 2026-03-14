@@ -9,6 +9,11 @@ import { MemoryViewer } from '../Dashboard/MemoryViewer';
 import { SkillManager } from '../Admin/SkillManager';
 import { CronDashboard } from '../Admin/CronDashboard';
 import { SystemStatus } from '../Admin/SystemStatus';
+import { AuditLog } from '../Admin/AuditLog';
+import { AgentManager } from '../Admin/AgentManager';
+import { ToolBrowser } from '../Admin/ToolBrowser';
+import { TokenAnalytics } from '../Admin/TokenAnalytics';
+import { FederationDashboard } from '../Admin/FederationDashboard';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 
@@ -90,6 +95,11 @@ export function ChatArea() {
                 {activeTab === 'skills' && <SkillManager />}
                 {activeTab === 'cron' && <CronDashboard />}
                 {activeTab === 'system' && <SystemStatus />}
+                {activeTab === 'audit' && <AuditLog />}
+                {activeTab === 'agents' && <AgentManager />}
+                {activeTab === 'tools' && <ToolBrowser />}
+                {activeTab === 'tokens' && <TokenAnalytics />}
+                {activeTab === 'federation' && <FederationDashboard />}
 
             </div>
             <VoiceOverlay />

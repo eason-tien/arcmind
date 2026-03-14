@@ -15,7 +15,7 @@ export interface Session {
     updatedAt: number;
 }
 
-export type AppTab = 'chat' | 'dashboard' | 'memory' | 'skills' | 'cron' | 'system';
+export type AppTab = 'chat' | 'dashboard' | 'memory' | 'skills' | 'cron' | 'system' | 'audit' | 'agents' | 'tools' | 'tokens' | 'federation';
 
 interface ChatState {
     isSidebarOpen: boolean;
