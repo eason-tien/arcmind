@@ -5,8 +5,14 @@
     Multi-provider routing · 63 skills · 4-layer memory · Self-healing
   </p>
   <p align="center">
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+    <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+"></a>
+    <a href="https://github.com/eason-tien/arcmind/actions"><img src="https://github.com/eason-tien/arcmind/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  </p>
+  <p align="center">
     <a href="#-quick-start">Quick Start</a> ·
-    <a href="#-features">Features</a> ·
+    <a href="QUICKSTART.md">Full Guide</a> ·
+    <a href="API.md">API Docs</a> ·
     <a href="#-architecture">Architecture</a> ·
     <a href="CONTRIBUTING.md">Contributing</a>
   </p>
@@ -18,17 +24,9 @@
 
 ArcMind is an **autonomous AI agent** that thinks in [OODA loops](https://en.wikipedia.org/wiki/OODA_loop) (Observe → Orient → Decide → Act). It can browse the web, manage files, write code, schedule tasks, send Telegram messages, and learn from every interaction — all with built-in governance and self-healing.
 
-```
-User / Cron / Webhook
-       ↓
-┌─── OODA Loop ───────────────────────┐
-│  Observe  ← input + memory recall   │
-│  Orient   ← classify + plan         │
-│  Decide   ← model route + governor  │
-│  Act      ← skills + tools          │
-│  [Learn]  ← memory write-back       │
-└──────────────────────────────────────┘
-```
+<p align="center">
+  <img src="docs/images/architecture.png" alt="ArcMind Architecture" width="700">
+</p>
 
 ## ✨ Features
 
