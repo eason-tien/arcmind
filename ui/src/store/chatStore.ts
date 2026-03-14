@@ -115,8 +115,6 @@ export const useChatStore = create<ChatState>((set) => ({
         const state = useChatStore.getState();
         const activeSessionId = state.activeSessionId;
 
-
-
         const reqBody = {
             session_id: activeSessionId,
             text: text
@@ -124,7 +122,7 @@ export const useChatStore = create<ChatState>((set) => ({
 
         try {
             set({ isGenerating: true });
-            const res = await fetch(`${API_BASE}/v1/chat/message`, {
+            const res = await fetch(`${API_BASE}/v1/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(reqBody)

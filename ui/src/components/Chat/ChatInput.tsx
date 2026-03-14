@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 export function ChatInput() {
     const [input, setInput] = useState('');
-    const { addMessage, isGenerating, toggleVoiceMode } = useChatStore();
+    const { sendMessage, isGenerating, toggleVoiceMode } = useChatStore();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const { t } = useTranslation();
 
@@ -18,24 +18,9 @@ export function ChatInput() {
 
     const handleSend = () => {
         if (!input.trim() || isGenerating) return;
-
-        addMessage({
-            id: Date.now().toString(),
-            role: 'user',
-            content: input.trim(),
-            timestamp: Date.now()
-        });
-
+        const text = input.trim();
         setInput('');
-        setTimeout(() => {
-            // Mock AI response
-            addMessage({
-                id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: t('chat.mock_response', { msg: input }),
-                timestamp: Date.now() + 1000
-            });
-        }, 1000);
+        sendMessage(text);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
