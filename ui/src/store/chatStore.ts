@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8100';
+
 export interface Message {
     id: string;
     role: 'user' | 'assistant';
@@ -49,6 +51,8 @@ interface ChatState {
     setVadSensitivity: (val: number) => void;
 
     submitVoiceAudio?: (blob: Blob) => void;
+    sendMessage: (text: string) => Promise<void>;
+    deleteSession: (sessionId: string) => Promise<void>;
 
     fetchSessions: () => Promise<void>;
     fetchMessages: (sessionId: string) => Promise<void>;
@@ -111,7 +115,7 @@ export const useChatStore = create<ChatState>((set) => ({
         const state = useChatStore.getState();
         const activeSessionId = state.activeSessionId;
 
-        const API_BASE = 'http://localhost:8100';
+
 
         const reqBody = {
             session_id: activeSessionId,
@@ -159,7 +163,7 @@ export const useChatStore = create<ChatState>((set) => ({
             formData.append('audio', blob, 'voice.webm');
 
             // Hardcode to localhost API since Electron running from file:// cannot use relative proxies
-            const API_BASE = 'http://localhost:8100';
+
 
             // Send to our new backend endpoint
             const res = await fetch(`${API_BASE}/v1/chat/audio?session_id=${activeSessionId}`, {
@@ -212,7 +216,6 @@ export const useChatStore = create<ChatState>((set) => ({
 
     fetchSessions: async () => {
         try {
-            const API_BASE = 'http://localhost:8100';
             const res = await fetch(`${API_BASE}/v1/chat/sessions`);
             const data = await res.json();
             if (data.sessions) {
@@ -233,7 +236,6 @@ export const useChatStore = create<ChatState>((set) => ({
 
     deleteSession: async (sessionId: string) => {
         try {
-            const API_BASE = 'http://localhost:8100';
             const res = await fetch(`${API_BASE}/v1/chat/sessions/${sessionId}`, {
                 method: 'DELETE'
             });
@@ -252,7 +254,7 @@ export const useChatStore = create<ChatState>((set) => ({
 
     fetchMessages: async (sessionId: string) => {
         try {
-            const API_BASE = 'http://localhost:8100'; // Added API_BASE
+
             const res = await fetch(`${API_BASE}/v1/chat/sessions/${sessionId}/history`); // Changed to absolute URL
             const data = await res.json();
             if (data.messages) {
