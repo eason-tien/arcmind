@@ -582,6 +582,27 @@ def create_app() -> FastAPI:
 
         return {"incidents": incidents, "total": len(incidents)}
 
+    # ── Resilience Status ────────────────────────────────────────────────
+
+    @app.get("/v1/resilience/status")
+    async def get_resilience_status():
+        """TaskResilienceEngine 健康狀態與 Circuit Breaker 總覽。"""
+        try:
+            from runtime.task_resilience import resilience_engine
+            return resilience_engine.get_status()
+        except Exception as e:
+            return {"error": str(e), "total_skills_tracked": 0, "skills": []}
+
+    @app.post("/v1/resilience/reset/{skill_name}")
+    async def reset_circuit_breaker(skill_name: str):
+        """手動重置某 Skill 的 Circuit Breaker。"""
+        try:
+            from runtime.task_resilience import resilience_engine
+            ok = resilience_engine.reset_circuit(skill_name)
+            return {"skill": skill_name, "reset": ok}
+        except Exception as e:
+            return {"error": str(e)}
+
     # ── Routers ───────────────────────────────────────────────────────────────
     from api.routes.agent_routes import router as agent_router
     from api.routes.skill_routes import router as skill_router

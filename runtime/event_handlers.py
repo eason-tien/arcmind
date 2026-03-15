@@ -59,10 +59,15 @@ async def handle_cron_trigger(event: Event) -> None:
             logger.warning("[Handler:cron] Governor check failed (proceeding): %s", e)
 
     # 直接調用 skill — CRON 任務是預定義的，不需要 LLM 分類或 PM 拆解
+    # V4: 透過 TaskResilienceEngine 執行，提供 timeout + retry + 診斷 + 自修復
     try:
-        from runtime.skill_manager import skill_manager
-        result = await asyncio.to_thread(skill_manager.invoke, skill_name, input_data)
-        success = result.get("success", True) if isinstance(result, dict) else True
+        from runtime.task_resilience import resilience_engine
+        result = await asyncio.to_thread(
+            resilience_engine.execute_with_resilience,
+            skill_name, input_data,
+            timeout_s=180, max_retries=2, cron_name=cron_name,
+        )
+        success = result.get("success", False)
         logger.info("[Handler:cron] %s done: success=%s skill=%s",
                     cron_name, success, skill_name)
         try:
@@ -71,7 +76,7 @@ async def handle_cron_trigger(event: Event) -> None:
         except Exception:
             pass
     except Exception as e:
-        logger.error("[Handler:cron] %s failed: %s", cron_name, e)
+        logger.error("[Handler:cron] %s resilience execution failed: %s", cron_name, e)
         try:
             from runtime.cron import cron_system
             cron_system._update_run(cron_name, success=False)
@@ -391,11 +396,26 @@ async def handle_webhook(event: Event) -> None:
 
 @event_bus.on(EventType.TASK_FAILED)
 async def handle_task_failed_log(event: Event) -> None:
-    """Log task failures for observability."""
+    """Log task failures + diagnose + notify via resilience engine."""
+    payload = event.payload
+    task_id = payload.get("task_id")
+    error = payload.get("error", "?")
+    skill_name = payload.get("skill_name", "")
+
     logger.warning("[Handler:task_failed] task=%s error=%s source=%s",
-                   event.payload.get("task_id"),
-                   event.payload.get("error", "?"),
-                   event.source)
+                   task_id, error, event.source)
+
+    # Write to causal memory for learning
+    try:
+        from memory.memory_store import memory_store
+        memory_store.add_causal(
+            cause=f"Task failed: {skill_name or event.source} — {error[:100]}",
+            effect=f"Failure type: {payload.get('failure_type', 'unknown')}, "
+                   f"attempts: {payload.get('attempts', 1)}",
+            confidence=0.85,
+        )
+    except Exception:
+        pass
 
 
 # ── Registration helper ──────────────────────────────────────────────────────
