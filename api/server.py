@@ -51,49 +51,73 @@ async def lifespan(app: FastAPI):
     from runtime.cron import cron_system
     cron_system.startup()
 
+    def _register_startup_cron(
+        existing_jobs: set[str],
+        *,
+        name: str,
+        cron_expr: str,
+        skill_name: str,
+        input_data: dict,
+        governor_required: bool = False,
+        log_label: str = "",
+    ) -> None:
+        if name in existing_jobs:
+            return
+        if not skill_manager.is_registered(skill_name):
+            logger.warning(
+                "Skipping CRON registration: %s -> missing skill '%s'",
+                name, skill_name
+            )
+            return
+        cron_system.add_cron(
+            name=name,
+            cron_expr=cron_expr,
+            skill_name=skill_name,
+            input_data=input_data,
+            governor_required=governor_required,
+        )
+        existing_jobs.add(name)
+        logger.info("📅 Registered CRON: %s", log_label or name)
+
     # ── Auto-register iteration CRON jobs (if not already present) ──
     try:
         existing_jobs = {j["name"] for j in cron_system.list_jobs()}
 
-        if "weekly-agent-meeting" not in existing_jobs:
-            cron_system.add_cron(
-                name="weekly-agent-meeting",
-                cron_expr="0 22 * * 0",  # 每週日 22:00
-                skill_name="self_iteration",
-                input_data={"phase": "meeting"},
-                governor_required=False,
-            )
-            logger.info("📅 Registered CRON: weekly-agent-meeting (Sun 22:00)")
+        _register_startup_cron(
+            existing_jobs,
+            name="weekly-agent-meeting",
+            cron_expr="0 22 * * 0",
+            skill_name="self_iteration",
+            input_data={"phase": "meeting"},
+            log_label="weekly-agent-meeting (Sun 22:00)",
+        )
 
-        if "iteration-daily-check" not in existing_jobs:
-            cron_system.add_cron(
-                name="iteration-daily-check",
-                cron_expr="0 9 * * 1-5",  # 週一到週五 09:00
-                skill_name="self_iteration",
-                input_data={"phase": "daily_check"},
-                governor_required=False,
-            )
-            logger.info("📅 Registered CRON: iteration-daily-check (Mon-Fri 09:00)")
+        _register_startup_cron(
+            existing_jobs,
+            name="iteration-daily-check",
+            cron_expr="0 9 * * 1-5",
+            skill_name="self_iteration",
+            input_data={"phase": "daily_check"},
+            log_label="iteration-daily-check (Mon-Fri 09:00)",
+        )
 
-        if "daily-morning-report" not in existing_jobs:
-            cron_system.add_cron(
-                name="daily-morning-report",
-                cron_expr="0 6 * * *",  # 每天 06:00
-                skill_name="daily_report",
-                input_data={"action": "report"},
-                governor_required=False,
-            )
-            logger.info("📅 Registered CRON: daily-morning-report (Daily 06:00)")
+        _register_startup_cron(
+            existing_jobs,
+            name="daily-morning-report",
+            cron_expr="0 6 * * *",
+            skill_name="daily_report",
+            input_data={"action": "report"},
+            log_label="daily-morning-report (Daily 06:00)",
+        )
 
-        if "env-scan" not in existing_jobs:
-            cron_system.add_cron(
-                name="env-scan",
-                cron_expr="0 */12 * * *",  # 每 12 小時
-                skill_name="env_discovery",
-                input_data={"action": "full_scan"},
-                governor_required=False,
-            )
-            logger.info("📅 Registered CRON: env-scan (Every 12h)")
+        _register_startup_cron(
+            existing_jobs,
+            name="env-scan",
+            cron_expr="0 */12 * * *",
+            skill_name="env_discovery",
+            input_data={"action": "full_scan"},
+            log_label="env-scan (Every 12h)",
+        )
 
         # V3: Approval Gate sweep — DISABLED (not needed in v0.9.3)
         # if "approval-gate-sweep" not in existing_jobs:
@@ -115,16 +139,14 @@ async def lifespan(app: FastAPI):
         #         governor_required=False,
         #     )
 
-        # P4-2: Memory Compressor — daily compress episodic → semantic
-        if "memory-compress" not in existing_jobs:
-            cron_system.add_cron(
-                name="memory-compress",
-                cron_expr="0 3 * * *",  # 每天 03:00
-                skill_name="memory_compress",
-                input_data={"days_old": 7, "max_batch": 50},
-                governor_required=False,
-            )
-            logger.info("📅 Registered CRON: memory-compress (Daily 03:00)")
+        _register_startup_cron(
+            existing_jobs,
+            name="memory-compress",
+            cron_expr="0 3 * * *",
+            skill_name="memory_compress",
+            input_data={"days_old": 7, "max_batch": 50},
+            log_label="memory-compress (Daily 03:00)",
+        )
 
     except Exception as e:
         logger.warning("Failed to register iteration CRONs: %s", e)
