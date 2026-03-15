@@ -124,18 +124,29 @@ class TelegramChannel(Channel):
     """
     Telegram Bot channel using long-polling.
 
-    Config via environment:
-      TELEGRAM_BOT_TOKEN  — Bot token from @BotFather
-      TELEGRAM_CHAT_ID    — Authorized chat ID (optional, for security)
+    Config: all Telegram credentials are read from ``config.settings``
+    (backed by ``.env`` via pydantic-settings).  Direct ``os.getenv``
+    is intentionally avoided to ensure a single source of truth.
     """
 
     def __init__(self, token: str = "", chat_id: str = ""):
-        token = token or os.getenv("TELEGRAM_BOT_TOKEN", "")
+        if not token:
+            try:
+                from config.settings import settings as _s
+                token = _s.telegram_bot_token
+            except Exception:
+                token = os.getenv("TELEGRAM_BOT_TOKEN", "")
         enabled = bool(token.strip())
         super().__init__(name="Telegram", enabled=enabled)
 
         self.token = token
-        self.allowed_chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID", "")
+        if not chat_id:
+            try:
+                from config.settings import settings as _s
+                chat_id = _s.telegram_chat_id
+            except Exception:
+                chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+        self.allowed_chat_id = chat_id
         self._app = None  # telegram.ext.Application
         try:
             from version import __version__

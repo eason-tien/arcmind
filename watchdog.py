@@ -291,21 +291,24 @@ class Watchdog:
             logger.debug("[Watchdog] Backup failed: %s", e)
 
     def _send_telegram_alert(self, message: str) -> None:
-        """Send alert to Telegram."""
+        """Send alert to Telegram.
+
+        Credentials are loaded via ``dotenv`` → ``os.getenv`` so that the
+        watchdog (a standalone process) reads the same ``.env`` as the main
+        ArcMind runtime without duplicating parsing logic.
+        """
         try:
             import html as _html
 
+            # Ensure .env is loaded even when watchdog runs standalone
+            try:
+                from dotenv import load_dotenv
+                load_dotenv(_ARCMIND_DIR / ".env", override=False)
+            except ImportError:
+                pass  # dotenv not installed — rely on shell env
+
             token = os.getenv("TELEGRAM_BOT_TOKEN", "")
             chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
-            if not token or not chat_id:
-                # Try reading from .env
-                env_file = _ARCMIND_DIR / ".env"
-                if env_file.exists():
-                    for line in env_file.read_text().split("\n"):
-                        if line.startswith("TELEGRAM_BOT_TOKEN="):
-                            token = line.split("=", 1)[1].strip().strip('"')
-                        elif line.startswith("TELEGRAM_CHAT_ID="):
-                            chat_id = line.split("=", 1)[1].strip().strip('"')
 
             if token and chat_id:
                 import urllib.request

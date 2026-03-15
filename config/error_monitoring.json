@@ -3,11 +3,8 @@
     "enabled": true,
     "log_level": "INFO",
     "notification": {
-      "telegram": {
-        "enabled": true,
-        "bot_token_env": "TELEGRAM_BOT_TOKEN",
-        "chat_id_env": "TELEGRAM_CHAT_ID"
-      }
+      "channel": "telegram",
+      "via": "config.settings.telegram_bot_token / telegram_chat_id"
     },
     "error_types": {
       "api_errors": ["timeout", "connection_refused", "500", "502", "503"],
