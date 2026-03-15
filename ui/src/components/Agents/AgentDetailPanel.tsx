@@ -30,7 +30,7 @@ export function AgentDetailPanel() {
                   color: getAgentColor(agent.id).accent,
                 }}
               >
-                {agent.id === 'ceo' ? <Crown size={16} /> : <Bot size={16} />}
+                {(agent.id === 'ceo' || agent.id === 'main') ? <Crown size={16} /> : <Bot size={16} />}
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-white">

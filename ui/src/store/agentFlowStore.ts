@@ -34,40 +34,61 @@ export interface AgentData {
 /* ── Color palette per agent role ─────────────────────────── */
 
 const ROLE_COLORS: Record<string, { bg: string; border: string; accent: string }> = {
-  ceo:     { bg: 'rgba(234,179,8,0.08)',   border: '#ca8a04', accent: '#eab308' },
-  pm:      { bg: 'rgba(168,85,247,0.08)',   border: '#9333ea', accent: '#a855f7' },
-  search:  { bg: 'rgba(59,130,246,0.08)',   border: '#2563eb', accent: '#3b82f6' },
-  code:    { bg: 'rgba(34,197,94,0.08)',    border: '#16a34a', accent: '#22c55e' },
-  qa:      { bg: 'rgba(249,115,22,0.08)',   border: '#ea580c', accent: '#f97316' },
-  devops:  { bg: 'rgba(236,72,153,0.08)',   border: '#db2777', accent: '#ec4899' },
-  analysis:{ bg: 'rgba(6,182,212,0.08)',    border: '#0891b2', accent: '#06b6d4' },
-  default: { bg: 'rgba(148,163,184,0.08)',  border: '#64748b', accent: '#94a3b8' },
+  ceo:      { bg: 'rgba(234,179,8,0.08)',   border: '#ca8a04', accent: '#eab308' },
+  main:     { bg: 'rgba(234,179,8,0.08)',   border: '#ca8a04', accent: '#eab308' },  // backend CEO id
+  pm:       { bg: 'rgba(168,85,247,0.08)',  border: '#9333ea', accent: '#a855f7' },
+  search:   { bg: 'rgba(59,130,246,0.08)',  border: '#2563eb', accent: '#3b82f6' },
+  code:     { bg: 'rgba(34,197,94,0.08)',   border: '#16a34a', accent: '#22c55e' },
+  qa:       { bg: 'rgba(249,115,22,0.08)',  border: '#ea580c', accent: '#f97316' },
+  devops:   { bg: 'rgba(236,72,153,0.08)',  border: '#db2777', accent: '#ec4899' },
+  sre:      { bg: 'rgba(236,72,153,0.08)',  border: '#db2777', accent: '#ec4899' },  // same as devops
+  analysis: { bg: 'rgba(6,182,212,0.08)',   border: '#0891b2', accent: '#06b6d4' },
+  security: { bg: 'rgba(239,68,68,0.08)',   border: '#dc2626', accent: '#ef4444' },
+  auditor:  { bg: 'rgba(245,158,11,0.08)',  border: '#d97706', accent: '#f59e0b' },
+  default:  { bg: 'rgba(148,163,184,0.08)', border: '#64748b', accent: '#94a3b8' },
 };
 
-export function getAgentColor(role: string) {
-  return ROLE_COLORS[role] || ROLE_COLORS.default;
+/** Resolve backend agent id → visual role for color lookup */
+function resolveRole(id: string): string {
+  if (id === 'main') return 'main';  // CEO
+  return id;
+}
+
+export function getAgentColor(idOrRole: string) {
+  return ROLE_COLORS[resolveRole(idOrRole)] || ROLE_COLORS.default;
 }
 
 /* ── Default delegation edges (CEO → Sub-agents) ─────────── */
+/* NOTE: backend CEO id is "main", not "ceo" */
 
 const DEFAULT_EDGES: Array<{ source: string; target: string; label?: string }> = [
-  { source: 'ceo', target: 'pm',       label: 'delegate' },
-  { source: 'ceo', target: 'search',   label: 'delegate' },
-  { source: 'ceo', target: 'code',     label: 'delegate' },
-  { source: 'ceo', target: 'analysis', label: 'delegate' },
-  { source: 'pm',  target: 'code',     label: 'pipeline' },
-  { source: 'pm',  target: 'qa',       label: 'pipeline' },
-  { source: 'pm',  target: 'devops',   label: 'pipeline' },
-  { source: 'pm',  target: 'search',   label: 'pipeline' },
-  { source: 'code', target: 'qa',      label: 'handoff' },
+  // CEO (main) → direct reports
+  { source: 'main', target: 'pm',       label: 'delegate' },
+  { source: 'main', target: 'search',   label: 'delegate' },
+  { source: 'main', target: 'code',     label: 'delegate' },
+  { source: 'main', target: 'analysis', label: 'delegate' },
+  // PM → execution team
+  { source: 'pm',   target: 'code',     label: 'pipeline' },
+  { source: 'pm',   target: 'qa',       label: 'pipeline' },
+  { source: 'pm',   target: 'sre',      label: 'pipeline' },
+  { source: 'pm',   target: 'search',   label: 'pipeline' },
+  // Code → QA handoff
+  { source: 'code', target: 'qa',       label: 'handoff' },
+  // QA → SRE deploy handoff
+  { source: 'qa',   target: 'sre',      label: 'handoff' },
+  // Security & Audit report to CEO
+  { source: 'main', target: 'security', label: 'delegate' },
+  { source: 'main', target: 'auditor',  label: 'delegate' },
 ];
 
 /* ── Auto-layout helpers ─────────────────────────────────── */
 
 function autoLayout(agents: AgentData[]): Node[] {
   const tiers: Record<string, number> = {
-    ceo: 0, pm: 1, search: 1, analysis: 1,
-    code: 2, qa: 2, devops: 2,
+    main: 0, ceo: 0,                           // CEO at top
+    pm: 1, search: 1, analysis: 1,              // direct reports
+    code: 2, qa: 2, sre: 2, devops: 2,          // execution team
+    security: 3, auditor: 3,                     // governance
   };
 
   const tierCounts: Record<number, number> = {};
@@ -96,11 +117,12 @@ function autoLayout(agents: AgentData[]): Node[] {
     const totalWidth = (count - 1) * xSpacing;
     const startX = -totalWidth / 2;
 
+    const isCeo = agent.id === 'main' || agent.id === 'ceo';
     return {
       id: agent.id,
       type: 'agentNode',
       position: { x: startX + idx * xSpacing, y: tier * ySpacing },
-      data: { agent, color: getAgentColor(agent.id) },
+      data: { agent, color: getAgentColor(agent.id), isCeo },
     };
   });
 }

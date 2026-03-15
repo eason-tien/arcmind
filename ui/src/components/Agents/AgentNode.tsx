@@ -6,11 +6,13 @@ import { Brain, Search, Code, Bug, Server, BarChart3, ClipboardList, Bot } from 
 
 const ROLE_ICONS: Record<string, React.ReactNode> = {
   ceo:      <Brain size={18} />,
+  main:     <Brain size={18} />,  // backend CEO id
   pm:       <ClipboardList size={18} />,
   search:   <Search size={18} />,
   code:     <Code size={18} />,
   qa:       <Bug size={18} />,
   devops:   <Server size={18} />,
+  sre:      <Server size={18} />,
   analysis: <BarChart3 size={18} />,
 };
 
@@ -22,7 +24,7 @@ function AgentNodeComponent({ data, selected }: NodeProps) {
 
   const icon = ROLE_ICONS[agent.id] || <Bot size={18} />;
   const isActive = agent.status === 'active';
-  const isCeo = agent.id === 'ceo';
+  const isCeo = agent.id === 'main' || agent.id === 'ceo';
 
   return (
     <>
