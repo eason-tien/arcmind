@@ -2,6 +2,44 @@
 
 All notable changes to ArcMind will be documented in this file.
 
+## [0.9.3] — 2026-03-15
+
+### Task Resilience Framework
+- **`runtime/task_resilience.py`** (NEW, ~510 lines) — TaskResilienceEngine：timeout 保護、7 種故障診斷（Timeout/SSL/Import/Network/DB/OOM/Unknown）、自動修復、指數退避重試、Circuit Breaker（3 次失敗 → 5 分鐘冷卻）、Telegram 升級通知。
+- **CRON Handler V4** — 排程任務透過 resilience_engine 執行，不再直接呼叫 `skill_manager.invoke`。
+- **TASK_FAILED 擴展** — 失敗事件寫入因果記憶（causal memory），系統可學習歷史故障模式。
+- **API**: `GET /v1/resilience/status` + `POST /v1/resilience/reset/{skill}`。
+
+### UX 改進
+- **移除原始工具日誌注入** — `main_loop.py` P6-Layer3 不再把 raw tool_call dump 貼到回覆末尾，改為 `🔧 完成 N/N 項操作`。
+- **SOUL_COMPACT.md** — 修正矛盾的 Proof-of-Work 規則（「行動簡述要自然」取代「必須包含行動摘要」）。
+
+### Skill 治理
+- **`skills/__manifest__.yaml`** — 升級至 64 skills，全部含 `category`（9 類）+ `timeout_s`。補齊 5 個缺失 skill 登錄。
+
+### Bug Fixes
+- **daily_report SSL** — 新增 `_make_ssl_context()` fallback，天氣 API 從 42s 降至 ~1s。
+- **Admin API** — 補齊 `/v1/tools`、`/v1/agents`、`/v1/analytics/tokens`、`/v1/iterations/incidents` 4 個端點。
+
+## [0.8.0] — 2026-03-13
+
+### Enterprise UI Dashboard
+- **5 頁管理後台**：SkillBrowser、CronDashboard、SystemDashboard、ToolBrowser、AgentManager、TokenAnalytics、AuditLog。
+- **深色/淺色主題切換** + Toast 通知系統。
+- **Code Splitting** — 動態 import 減少初始載入體積。
+- **ChatInput 修復** — API endpoint 對齊、mock response 清理。
+- **Session 管理** — 新增 New Chat、Delete Session 功能。
+
+### Documentation & Deployment
+- **QUICKSTART.md** — 快速入門文件。
+- **API.md** — API 參考文件。
+- **Dockerfile + docker-compose.yml** — 容器化部署。
+- **Makefile** — 標準化建構/測試/部署流程。
+- **README** — 架構圖、徽章、文件連結。
+
+### New Skills
+- **email_kb_skill** — PST 郵件知識庫（讀取/搜尋/LLM 摘要）。
+
 ## [0.7.0] — 2026-03-09
 
 ### Webhook 事件驅動 + Agent 模板招聘系統

@@ -25,6 +25,8 @@ skills:
   - web
   - information
   version: '1.0'
+  category: search
+  timeout_s: 120
 - description: 本地檔案讀寫、列目錄、刪除等操作
   governor_required: true
   handler: run
@@ -54,6 +56,8 @@ skills:
   - io
   - storage
   version: '1.0'
+  category: ext
+  timeout_s: 60
 - description: 在受限沙盒中執行 Python 程式碼片段
   governor_required: true
   handler: run
@@ -83,6 +87,8 @@ skills:
   - python
   - exec
   version: '1.0'
+  category: dev
+  timeout_s: 60
 - description: 台股真实规则模拟交易系统 - 自主执行买卖决策，追求8%以上获益率
   governor_required: false
   handler: trading_skill
@@ -106,6 +112,8 @@ skills:
   - stock
   - taiwan
   version: '1.0'
+  category: finance
+  timeout_s: 120
 - description: 每週 Agent 自我迭代會議 — 收集情報、圓桌會議、生成改進計劃
   governor_required: false
   handler: run
@@ -131,6 +139,8 @@ skills:
   - meeting
   - cron
   version: '1.0'
+  category: core
+  timeout_s: 600
 - description: 每日早報 — 天氣、新聞、系統狀態、迭代進度
   governor_required: false
   handler: run
@@ -156,13 +166,14 @@ skills:
   - weather
   - cron
   version: '1.0'
+  category: ops
+  timeout_s: 180
 - description: GitHub 完整整合 — Repos/PRs/Issues/Actions/Releases
   governor_required: false
   handler: run
   inputs:
-  - description: list_repos | get_repo_status | create_pr | list_prs | merge_pr |
-      list_issues | create_issue | close_issue | comment | list_actions | trigger_action
-      | create_release
+  - description: list_repos | get_repo_status | create_pr | list_prs | merge_pr | list_issues | create_issue | close_issue
+      | comment | list_actions | trigger_action | create_release
     name: action
     required: true
     type: string
@@ -186,6 +197,8 @@ skills:
   - ci
   - release
   version: '1.0'
+  category: dev
+  timeout_s: 120
 - description: 文件生成 — 分析公司模板 + 生成 PPT/Excel（公司模板模式或自由設計）
   governor_required: false
   handler: run
@@ -219,12 +232,14 @@ skills:
   - template
   - spreadsheet
   version: '1.0'
+  category: media
+  timeout_s: 60
 - description: 三維度認知掃描 — L1宿主機/L2服務/L3網路拓撲（跨平台 macOS+Windows+Linux）
   governor_required: false
   handler: run
   inputs:
-  - description: host_info | resource_check | scan_ports | list_services | find_configs
-      | db_discovery | network_interfaces | arp_table | route_table | full_scan
+  - description: host_info | resource_check | scan_ports | list_services | find_configs | db_discovery | network_interfaces
+      | arp_table | route_table | full_scan
     name: action
     required: true
     type: string
@@ -246,12 +261,13 @@ skills:
   - topology
   - discovery
   version: '1.0'
+  category: core
+  timeout_s: 180
 - description: GitNexus 代碼智慧引擎 — 知識圖譜查詢、爆炸半徑分析、智能重命名
   governor_required: false
   handler: run
   inputs:
-  - description: query | context | impact | detect | rename | list_repos | reindex
-      | status
+  - description: query | context | impact | detect | rename | list_repos | reindex | status
     name: action
     required: true
     type: string
@@ -272,6 +288,8 @@ skills:
   - refactor
   - gitnexus
   version: '1.0'
+  category: dev
+  timeout_s: 120
 - description: ArcMind 与 antigravity/gemini CLI 整合桥接 — 零 API Key 调用 Gemini
   governor_required: false
   handler: run
@@ -323,6 +341,8 @@ skills:
   - bridge
   - cli
   version: '1.0'
+  category: ext
+  timeout_s: 120
 - description: 通过文件系统控制 Antigravity 桌面应用 — 零 API Key，零封号风险
   governor_required: false
   handler: run
@@ -358,6 +378,8 @@ skills:
   - desktop
   - control
   version: '1.0'
+  category: ext
+  timeout_s: 60
 - description: 检查 Antigravity 运行状态和对话列表
   governor_required: false
   handler: check_status
@@ -381,6 +403,8 @@ skills:
   - status
   - monitor
   version: '1.0'
+  category: ext
+  timeout_s: 60
 - description: 获取所有 Antigravity 对话列表
   governor_required: false
   handler: get_conversations
@@ -398,8 +422,10 @@ skills:
   - conversation
   - list
   version: '1.0'
-- description: 'Multi-Agent Orchestration: Delegate a task to a specialized sub-agent
-    (e.g., researcher, engineer) for asynchronous execution.'
+  category: ext
+  timeout_s: 60
+- description: 'Multi-Agent Orchestration: Delegate a task to a specialized sub-agent (e.g., researcher, engineer) for asynchronous
+    execution.'
   governor_required: false
   handler: delegate_task
   inputs:
@@ -435,8 +461,9 @@ skills:
   - multi-agent
   - paperclip
   version: '1.0'
-- description: 'Multi-Agent Orchestration: Background worker that processes delegated
-    sub-tasks.'
+  category: core
+  timeout_s: 300
+- description: 'Multi-Agent Orchestration: Background worker that processes delegated sub-tasks.'
   governor_required: false
   handler: run
   inputs: []
@@ -456,8 +483,9 @@ skills:
   - cron
   - paperclip
   version: '1.0'
-- description: 'Multi-Agent Orchestration: Delegate a shell/python task to the remote
-    Windows PC at 192.168.1.151.'
+  category: core
+  timeout_s: 30
+- description: 'Multi-Agent Orchestration: Delegate a shell/python task to the remote Windows PC at 192.168.1.151.'
   governor_required: false
   handler: run
   inputs:
@@ -465,8 +493,7 @@ skills:
     name: title
     required: true
     type: string
-  - description: The powershell command or python script to execute on the remote
-      machine
+  - description: The powershell command or python script to execute on the remote machine
     name: command
     required: true
     type: string
@@ -492,6 +519,8 @@ skills:
   - windows
   - paperclip
   version: '1.0'
+  category: core
+  timeout_s: 300
 - description: AI趋势监控 - 每天自动搜集AI/科技资讯，分析趋势，生成需求报告
   governor_required: false
   handler: handler
@@ -529,13 +558,14 @@ skills:
   - news
   - cron
   version: 1.0.0
+  category: search
+  timeout_s: 120
 - description: 代码开发助手 - 代码生成、修复、优化、解释
   governor_required: false
   handler: handler
   inputs:
   - default: generate
-    description: generate (生成) | fix (修复) | optimize (优化) | explain (解释) | execute
-      (执行) | test (测试)
+    description: generate (生成) | fix (修复) | optimize (优化) | explain (解释) | execute (执行) | test (测试)
     name: action
     required: false
     type: string
@@ -590,13 +620,15 @@ skills:
   - assistant
   - generator
   version: 1.0.0
+  category: dev
+  timeout_s: 120
 - description: 多步骤智能体工作流构建器 - 帮助用户快速创建和管理 AI Agent 任务链
   governor_required: false
   handler: handler
   inputs:
   - default: list_agents
-    description: create_agent | create_workflow | add_step | execute_workflow | list_agents
-      | list_workflows | get_status | list_executions
+    description: create_agent | create_workflow | add_step | execute_workflow | list_agents | list_workflows | get_status
+      | list_executions
     name: action
     required: false
     type: string
@@ -682,6 +714,8 @@ skills:
   - builder
   - automation
   version: 1.0.0
+  category: core
+  timeout_s: 120
 - description: 同步聯邦 peer 的可用能力列表 — 每 5 分鐘從各 peer 拉取 capabilities
   governor_required: false
   handler: run
@@ -701,12 +735,14 @@ skills:
   - cron
   - peer
   version: '1.0'
+  category: core
+  timeout_s: 120
 - description: 白帽安全掃描與漏洞評估 — 端口掃描(nmap)、Web漏洞(nikto)、系統審計(lynis)、SSL檢測、代碼審計(bandit)、依賴檢查
   governor_required: true
   handler: invoke
   inputs:
-  - description: port_scan | web_vuln_scan | system_audit | ssl_check | dns_recon
-      | code_audit | dependency_check | network_recon | infra_security_check | full_security_audit
+  - description: port_scan | web_vuln_scan | system_audit | ssl_check | dns_recon | code_audit | dependency_check | network_recon
+      | infra_security_check | full_security_audit
     name: action
     required: true
     type: string
@@ -741,6 +777,8 @@ skills:
   - nikto
   - pentest
   version: 1.0.0
+  category: ops
+  timeout_s: 300
 - description: V3 治理 — 定時掃描審批閘門，自動升級逾期 (30min) 和過期 (2h) 的閘門
   governor_required: false
   handler: run
@@ -764,6 +802,8 @@ skills:
   - v3
   - cron
   version: '3.0'
+  category: core
+  timeout_s: 10
 - description: ArcMind 架構集成測試 — 分類器、路由、反幻覺自動驗證
   governor_required: false
   handler: run
@@ -795,13 +835,14 @@ skills:
   - qa
   - diagnostics
   version: '1.0'
+  category: dev
+  timeout_s: 300
 - description: Pexels 免费素材API — 获取高质量图片和视频素材
   governor_required: false
   handler: run
   inputs:
   - default: search
-    description: search (搜索素材) | list_curated (列出精选) | get_photo (获取单张) | get_video
-      (获取单个视频)
+    description: search (搜索素材) | list_curated (列出精选) | get_photo (获取单张) | get_video (获取单个视频)
     name: action
     required: false
     type: string
@@ -847,13 +888,14 @@ skills:
   - media
   - 素材
   version: '1.0'
+  category: media
+  timeout_s: 60
 - description: Google Workspace 整合 — Gmail / Calendar / Drive / Sheets
   governor_required: true
   handler: run
   inputs:
-  - description: gmail_send | gmail_search | gmail_read | calendar_list | calendar_create
-      | calendar_delete | drive_list | drive_search | drive_download | sheets_read
-      | sheets_write | sheets_create | auth
+  - description: gmail_send | gmail_search | gmail_read | calendar_list | calendar_create | calendar_delete | drive_list |
+      drive_search | drive_download | sheets_read | sheets_write | sheets_create | auth
     name: action
     required: true
     type: string
@@ -895,12 +937,14 @@ skills:
   - sheets
   - productivity
   version: '1.0'
+  category: ext
+  timeout_s: 60
 - description: 內容摘要 — 對文字/URL/檔案進行 LLM 摘要（brief/detailed/bullet_points/executive）
   governor_required: false
   handler: run
   inputs:
   - default: text
-    description: 'text | url | file'
+    description: text | url | file
     name: source
     required: false
     type: string
@@ -917,12 +961,12 @@ skills:
     required: false
     type: string
   - default: brief
-    description: 'brief | detailed | bullet_points | executive'
+    description: brief | detailed | bullet_points | executive
     name: style
     required: false
     type: string
   - default: zh-TW
-    description: 'zh-TW | en'
+    description: zh-TW | en
     name: language
     required: false
     type: string
@@ -943,13 +987,14 @@ skills:
   - nlp
   - research
   version: '1.0'
+  category: data
+  timeout_s: 30
 - description: Knowledge Graph + Vector Search 記憶系統 — 事實儲存、知識圖譜查詢、語義搜尋
   governor_required: false
   handler: run
   inputs:
   - default: stats
-    description: store_fact | query_facts | list_entities | relate | search_similar
-        | forget | stats
+    description: store_fact | query_facts | list_entities | relate | search_similar | forget | stats
     name: action
     required: false
     type: string
@@ -989,13 +1034,14 @@ skills:
   - facts
   - kg
   version: '1.0'
+  category: data
+  timeout_s: 30
 - description: Slack 整合 — 訊息發送、頻道管理、歷史記錄、搜尋
   governor_required: true
   handler: run
   inputs:
   - default: list_channels
-    description: send_message | list_channels | read_history | react | upload_file
-        | search_messages
+    description: send_message | list_channels | read_history | react | upload_file | search_messages
     name: action
     required: false
     type: string
@@ -1024,6 +1070,8 @@ skills:
   - communication
   - channel
   version: '1.0'
+  category: comm
+  timeout_s: 30
 - description: Email 整合 — SMTP 發送 + IMAP 讀取/搜尋
   governor_required: true
   handler: run
@@ -1066,13 +1114,14 @@ skills:
   - imap
   - communication
   version: '1.0'
+  category: comm
+  timeout_s: 30
 - description: Obsidian Vault 整合 — 筆記搜尋、讀寫、反向連結
   governor_required: false
   handler: run
   inputs:
   - default: list_notes
-    description: search_notes | read_note | create_note | update_note | list_notes
-        | get_backlinks | set_vault_path
+    description: search_notes | read_note | create_note | update_note | list_notes | get_backlinks | set_vault_path
     name: action
     required: false
     type: string
@@ -1112,6 +1161,8 @@ skills:
   - knowledge
   - markdown
   version: '1.0'
+  category: ext
+  timeout_s: 60
 - description: 圖片生成 — 支援 DALL-E 3 / Stability AI / 本地 ComfyUI
   governor_required: true
   handler: run
@@ -1126,11 +1177,11 @@ skills:
     required: false
     type: string
   - default: auto
-    description: 'dalle | stability | comfyui | auto'
+    description: dalle | stability | comfyui | auto
     name: backend
     required: false
     type: string
-  - default: '1024x1024'
+  - default: 1024x1024
     description: '圖片尺寸 (DALL-E: 1024x1024/1792x1024/1024x1792)'
     name: size
     required: false
@@ -1161,6 +1212,8 @@ skills:
   - comfyui
   - ai
   version: '1.0'
+  category: media
+  timeout_s: 60
 - description: 天氣查詢 — 當前天氣 + 多日預報（wttr.in + Open-Meteo）
   governor_required: false
   handler: run
@@ -1205,6 +1258,8 @@ skills:
   - forecast
   - utility
   version: '1.0'
+  category: ops
+  timeout_s: 30
 - description: Discord Bot 整合 — 訊息發送、頻道管理、伺服器資訊
   governor_required: true
   handler: run
@@ -1238,6 +1293,8 @@ skills:
   - messaging
   - communication
   version: '1.0'
+  category: comm
+  timeout_s: 30
 - description: Notion API 整合 — 頁面/資料庫/區塊 CRUD
   governor_required: true
   handler: run
@@ -1272,6 +1329,8 @@ skills:
   - database
   - notes
   version: '1.0'
+  category: ext
+  timeout_s: 60
 - description: 系統剪貼簿操作 — 讀取/寫入/歷史/追加
   governor_required: false
   handler: run
@@ -1299,6 +1358,8 @@ skills:
   - utility
   - system
   version: '1.0'
+  category: ext
+  timeout_s: 10
 - description: Headless 瀏覽器自動化 — 網頁擷取/截圖/連結提取/表單填寫
   governor_required: true
   handler: run
@@ -1330,6 +1391,8 @@ skills:
   - scraping
   - automation
   version: '1.0'
+  category: search
+  timeout_s: 120
 - description: 多語言翻譯 — DeepL + LLM（支援風格/術語表/批次）
   governor_required: false
   handler: run
@@ -1368,6 +1431,8 @@ skills:
   - language
   - nlp
   version: '1.0'
+  category: data
+  timeout_s: 30
 - description: 螢幕截圖 — macOS screencapture / Linux scrot
   governor_required: false
   handler: run
@@ -1401,6 +1466,8 @@ skills:
   - capture
   - utility
   version: '1.0'
+  category: media
+  timeout_s: 15
 - description: 通用 SQL 查詢 — SQLite / PostgreSQL / MySQL
   governor_required: true
   handler: run
@@ -1440,6 +1507,8 @@ skills:
   - sqlite
   - postgresql
   version: '1.0'
+  category: data
+  timeout_s: 30
 - description: 系統進程管理 — 列出/搜尋/終止進程 + 資源監控
   governor_required: true
   handler: run
@@ -1471,6 +1540,8 @@ skills:
   - system
   - monitoring
   version: '1.0'
+  category: ops
+  timeout_s: 60
 - description: 壓縮/解壓 — zip, tar, gzip, bz2
   governor_required: false
   handler: run
@@ -1508,6 +1579,8 @@ skills:
   - tar
   - compression
   version: '1.0'
+  category: ext
+  timeout_s: 60
 - description: PDF 操作 — 文字提取/合併/拆分/資訊
   governor_required: false
   handler: run
@@ -1539,6 +1612,8 @@ skills:
   - document
   - text-extraction
   version: '1.0'
+  category: media
+  timeout_s: 60
 - description: QR Code 生成/讀取
   governor_required: false
   handler: run
@@ -1569,6 +1644,8 @@ skills:
   - qrcode
   - utility
   version: '1.0'
+  category: media
+  timeout_s: 10
 - description: 雜湊/編碼/加密工具 — MD5, SHA, Base64, URL, JWT, HMAC, UUID
   governor_required: false
   handler: run
@@ -1608,6 +1685,8 @@ skills:
   - crypto
   - utility
   version: '1.0'
+  category: data
+  timeout_s: 10
 - description: JSON/YAML/CSV 資料處理 — 格式轉換/查詢/驗證/合併
   governor_required: false
   handler: run
@@ -1647,6 +1726,8 @@ skills:
   - data
   - utility
   version: '1.0'
+  category: data
+  timeout_s: 10
 - description: Docker 容器管理 — 列出/啟動/停止/日誌/exec
   governor_required: true
   handler: run
@@ -1681,6 +1762,8 @@ skills:
   - container
   - devops
   version: '1.0'
+  category: ops
+  timeout_s: 60
 - description: SSH 遠端執行 — 命令/上傳/下載/測試連線
   governor_required: true
   handler: run
@@ -1719,6 +1802,8 @@ skills:
   - remote
   - devops
   version: '1.0'
+  category: ops
+  timeout_s: 120
 - description: 網路診斷 — ping/DNS/port check/HTTP/traceroute/whois
   governor_required: false
   handler: run
@@ -1747,6 +1832,8 @@ skills:
   - dns
   - diagnostic
   version: '1.0'
+  category: ops
+  timeout_s: 60
 - description: 正規表達式工具 — 測試/匹配/替換/提取/分割
   governor_required: false
   handler: run
@@ -1777,6 +1864,8 @@ skills:
   - text
   - utility
   version: '1.0'
+  category: data
+  timeout_s: 10
 - description: 文字處理 — diff/word count/格式化/提取/模板
   governor_required: false
   handler: run
@@ -1804,6 +1893,8 @@ skills:
   - formatting
   - utility
   version: '1.0'
+  category: data
+  timeout_s: 10
 - description: 系統通知 — macOS 通知/語音/對話框
   governor_required: false
   handler: run
@@ -1834,6 +1925,8 @@ skills:
   - system
   - macos
   version: '1.0'
+  category: comm
+  timeout_s: 30
 - description: CRON 排程管理 — 查看/新增/刪除/暫停/更新
   governor_required: true
   handler: run
@@ -1869,6 +1962,8 @@ skills:
   - scheduler
   - automation
   version: '1.0'
+  category: core
+  timeout_s: 30
 - description: 本地 Git 操作 — status/log/diff/branch/commit/stash
   governor_required: true
   handler: run
@@ -1902,6 +1997,8 @@ skills:
   - vcs
   - devops
   version: '1.0'
+  category: dev
+  timeout_s: 120
 - description: HTTP API 測試 — GET/POST/PUT/DELETE + 鏈式請求
   governor_required: true
   handler: run
@@ -1941,6 +2038,8 @@ skills:
   - testing
   - curl
   version: '1.0'
+  category: dev
+  timeout_s: 120
 - description: OCR 文字辨識 — macOS Vision / Tesseract
   governor_required: false
   handler: run
@@ -1979,6 +2078,8 @@ skills:
   - text-recognition
   - vision
   version: '1.0'
+  category: media
+  timeout_s: 60
 - description: Marp 簡報製作 — Markdown → PPT/PDF/HTML 簡報
   governor_required: false
   handler: run
@@ -2034,6 +2135,8 @@ skills:
   - markdown
   - slides
   version: '1.0'
+  category: media
+  timeout_s: 60
 - description: 精美 AI 簡報生成 — Presenton (Gamma/Beautiful.ai 替代品)
   governor_required: false
   handler: run
@@ -2087,6 +2190,8 @@ skills:
   - slides
   - presenton
   version: '1.0'
+  category: media
+  timeout_s: 60
 - description: PST 郵件知識庫 — 讀取 .pst 檔，分類建立知識庫供 Agent 搜尋學習
   governor_required: false
   handler: run
@@ -2139,4 +2244,137 @@ skills:
   - knowledge-base
   - search
   version: '1.0'
+  category: comm
+  timeout_s: 30
+- name: system_health_monitor
+  description: 系統健康監控（CPU/RAM/Disk/Process/Service）
+  category: ops
+  version: '1.0'
+  timeout_s: 60
+  handler: run
+  governor_required: false
+  inputs:
+  - name: action
+    type: string
+    required: false
+    default: full
+    description: full | cpu | memory | disk | process | service | docker | report
+  outputs:
+  - name: success
+    type: bool
+  - name: report
+    type: dict
+  module: system_health_monitor/__init__.py
+  permissions:
+  - shell
+  tags:
+  - health
+  - monitor
+  - system
+  - ops
+- name: system_test_skill
+  description: 系統功能測試（Skill/API/CRON 驗證）
+  category: dev
+  version: '1.0'
+  timeout_s: 300
+  handler: run
+  governor_required: false
+  inputs:
+  - name: action
+    type: string
+    required: false
+    default: full
+    description: full | skills | api | cron | memory
+  outputs:
+  - name: success
+    type: bool
+  - name: report
+    type: string
+  module: system_test_skill.py
+  permissions:
+  - shell
+  - network
+  tags:
+  - test
+  - qa
+  - system
+- name: system_tester_skill
+  description: 系統驗證測試（整合驗證）
+  category: dev
+  version: '1.0'
+  timeout_s: 300
+  handler: run
+  governor_required: false
+  inputs:
+  - name: action
+    type: string
+    required: false
+    default: full
+    description: full | quick | deep
+  outputs:
+  - name: success
+    type: bool
+  - name: report
+    type: string
+  module: system_tester_skill.py
+  permissions:
+  - shell
+  - network
+  tags:
+  - test
+  - qa
+  - integration
+- name: template_analyzer
+  description: Template Analyzer — 公司簡報模板分析與風格提取
+  category: dev
+  version: '1.0'
+  timeout_s: 60
+  handler: analyze
+  governor_required: false
+  inputs:
+  - name: action
+    type: string
+    required: true
+    description: analyze | extract_style | list
+  - name: template_path
+    type: string
+    required: false
+    description: 模板檔案路徑
+  outputs:
+  - name: success
+    type: bool
+  - name: analysis
+    type: dict
+  module: template_analyzer.py
+  permissions:
+  - filesystem
+  tags:
+  - template
+  - analysis
+  - ppt
+- name: trading_enhanced
+  description: 台股模擬交易（增強版策略：均線/布林/MACD/RSI）
+  category: finance
+  version: '1.0'
+  timeout_s: 120
+  handler: execute
+  governor_required: false
+  inputs:
+  - name: action
+    type: string
+    required: false
+    default: trade
+    description: trade | analyze | summary | positions | history
+  outputs:
+  - name: result
+    type: dict
+  module: trading_enhanced.py
+  permissions:
+  - filesystem
+  - network
+  tags:
+  - trading
+  - stock
+  - taiwan
+  - enhanced
 version: '1.0'
