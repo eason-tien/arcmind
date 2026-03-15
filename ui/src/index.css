@@ -126,3 +126,73 @@ select,
   border: none;
   @apply p-0 text-sm;
 }
+
+/* ── React Flow Dark Theme ─────────────────────────────────── */
+
+.agent-workflow-canvas {
+  background-color: #09090b !important;
+}
+
+.agent-flow-controls {
+  background: rgba(15, 15, 25, 0.9) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4) !important;
+}
+
+.agent-flow-controls button {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  fill: rgba(255, 255, 255, 0.4) !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+  width: 32px !important;
+  height: 32px !important;
+  padding: 6px !important;
+}
+
+.agent-flow-controls button:hover {
+  fill: white !important;
+  color: white !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.agent-flow-controls button:last-child {
+  border-bottom: none !important;
+}
+
+.agent-flow-controls button svg {
+  max-width: 16px !important;
+  max-height: 16px !important;
+}
+
+.agent-flow-minimap {
+  background: rgba(15, 15, 25, 0.85) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Hide React Flow branding */
+.react-flow__attribution {
+  display: none !important;
+}
+
+/* Smooth node dragging */
+.react-flow__node {
+  transition: box-shadow 0.2s ease;
+}
+
+.react-flow__node.selected {
+  z-index: 10 !important;
+}
+
+/* Edge animation smoothness */
+.react-flow__edge path {
+  transition: stroke-width 0.2s ease;
+}
+
+.react-flow__edge.selected path {
+  stroke-width: 3 !important;
+}
