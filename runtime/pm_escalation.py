@@ -72,17 +72,28 @@ class PMEscalationManager:
         with self._lock:
             self._pending.pop(task_id, None)
 
+        # V5: Notify user for cancel/skip decisions (not just silent auto-resolve)
+        dec_str = decision.get("decision", "continue")
+        if dec_str in ("cancel", "skip_step"):
+            self._notify_user(task_id, reason, decision, context)
+
         # Restore TaskTracker status
         try:
             from runtime.task_tracker import task_tracker, TaskStatus
-            task_tracker.update_status(
-                task_id, TaskStatus.EXECUTING,
-                log_msg=f"升级决定: {decision.get('decision', '?')} — {decision.get('reason', '')[:50]}"
-            )
+            if dec_str == "cancel":
+                task_tracker.update_status(
+                    task_id, TaskStatus.FAILED,
+                    log_msg=f"升级取消: {decision.get('reason', '')[:80]}"
+                )
+            else:
+                task_tracker.update_status(
+                    task_id, TaskStatus.EXECUTING,
+                    log_msg=f"升级决定: {dec_str} — {decision.get('reason', '')[:50]}"
+                )
         except Exception:
             pass
 
-        logger.info("[Escalation] PM %s resolved: %s", task_id, decision.get("decision", "?"))
+        logger.info("[Escalation] PM %s resolved: %s", task_id, dec_str)
         return decision
 
     def resolve_escalation(
@@ -121,6 +132,55 @@ class PMEscalationManager:
             ))
         except Exception as e:
             logger.debug("[Escalation] Event emission failed: %s", e)
+
+    def _notify_user(self, task_id: str, reason: str,
+                     decision: dict, context: dict) -> None:
+        """
+        V5: Notify user when PM task is cancelled or step is skipped.
+        Emits PM_ESCALATION_NOTIFY event for frontend/Telegram to display.
+        """
+        dec_str = decision.get("decision", "?")
+        dec_reason = decision.get("reason", "")
+        original_task = context.get("original_task", "")[:100]
+
+        logger.warning("[Escalation] Notifying user: PM %s %s — %s",
+                       task_id, dec_str, dec_reason[:80])
+
+        try:
+            from runtime.event_bus import event_bus, Event, EventType
+            event_bus.emit(Event(
+                type=EventType.SYSTEM_EVENT,
+                source="pm_escalation",
+                payload={
+                    "event": "PM_ESCALATION_NOTIFY",
+                    "task_id": task_id,
+                    "decision": dec_str,
+                    "reason": reason[:200],
+                    "decision_reason": dec_reason[:200],
+                    "original_task": original_task,
+                    "notify": True,  # Flag for frontend to show notification
+                },
+            ))
+        except Exception as e:
+            logger.debug("[Escalation] Notify event failed: %s", e)
+
+        # Also record in audit log
+        try:
+            from runtime.audit_events import audit_events
+            audit_events.record(
+                event_type="pm_escalation_notify",
+                source="pm_escalation",
+                summary=f"PM {task_id} {dec_str}: {dec_reason[:100]}",
+                severity="warning" if dec_str == "cancel" else "info",
+                task_id=task_id,
+                details={
+                    "decision": dec_str,
+                    "reason": reason[:300],
+                    "original_task": original_task,
+                },
+            )
+        except Exception:
+            pass
 
     def _auto_resolve(self, task_id: str, reason: str, context: dict) -> dict:
         """Use LLM to auto-decide how to handle the escalation.

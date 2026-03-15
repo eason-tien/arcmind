@@ -397,64 +397,77 @@ class MainLoop:
                         except Exception as _pe:
                             logger.debug("[DECIDE] progress data collection failed: %s", _pe)
 
-                    if complexity == "project":
-                        # V2: Project-level task → create project + spawn PM Agent
+                    if complexity in ("project", "complex"):
+                        # V4: Both project AND complex tasks spawn PM Agent
+                        # PM has plan/QA/retry/diagnose/escalate — CEO shouldn't do multi-step work
                         try:
-                            from runtime.project_registry import project_registry
                             from runtime.task_tracker import task_tracker
                             from runtime.pm_agent import PMAgent, pm_pool
 
-                            # 1. Create project in registry
-                            project = project_registry.create_project(
-                                name=inp.command[:100],
-                                description=inp.command,
-                                session_id=str(inp.session_id) if inp.session_id else None,
-                            )
-                            project_registry.transition_project(project["id"], "planning")
+                            session_ctx = inp.context.copy()
+                            session_ctx["session_db_id"] = inp.session_id
 
-                            # 2. Spawn PM Agent (same as complex path)
+                            # Project-level: also create project in registry
+                            project_id = None
+                            if complexity == "project":
+                                try:
+                                    from runtime.project_registry import project_registry
+                                    project = project_registry.create_project(
+                                        name=inp.command[:100],
+                                        description=inp.command,
+                                        session_id=str(inp.session_id) if inp.session_id else None,
+                                    )
+                                    project_registry.transition_project(project["id"], "planning")
+                                    project_id = project["id"]
+                                    session_ctx["project_id"] = project_id
+                                except Exception as proj_err:
+                                    logger.warning("[DECIDE] Project registry failed: %s", proj_err)
+
+                            # Spawn PM Agent
                             pm_task_id = task_tracker.create(
                                 command=inp.command,
                                 session_id=inp.session_id,
                             )
-
-                            session_ctx = inp.context.copy()
-                            session_ctx["session_db_id"] = inp.session_id
-                            session_ctx["project_id"] = project["id"]
-
                             pm = PMAgent(pm_task_id, inp.command, session_ctx)
                             pm_pool.submit(pm)
 
-                            # 3. Record PM assignment in project registry
-                            try:
-                                project_registry.assign_pm_agent(project["id"], pm_task_id)
-                            except Exception:
-                                pass
+                            # Record PM assignment in project registry (if project)
+                            if project_id:
+                                try:
+                                    from runtime.project_registry import project_registry
+                                    project_registry.assign_pm_agent(project_id, pm_task_id)
+                                except Exception:
+                                    pass
 
                             active_count = pm_pool.get_active_count()
-                            ack_msg = (
-                                f"\U0001f4ca 收到！这是一个项目级任务，我已创建项目 "
-                                f"[{project['id']}] \"{project['name'][:50]}\" "
-                                f"并分配 PM Agent [{pm.worker_id}] (任务 {pm_task_id}) "
-                                f"使用 {pm.model.split(':')[-1]} 模型在后台执行。\n"
-                                f"当前有 {active_count} 个 PM 在工作。\n"
-                                f"你可以随时问「进度?」来查看。"
-                            )
+                            if complexity == "project":
+                                ack_msg = (
+                                    f"\U0001f4ca 收到！这是一个项目级任务，我已创建项目 "
+                                    f"[{project_id}] 并分配 PM Agent [{pm.worker_id}] "
+                                    f"(任务 {pm_task_id}) 在后台执行。\n"
+                                    f"当前有 {active_count} 个 PM 在工作。\n"
+                                    f"你可以随时问「进度?」来查看。"
+                                )
+                            else:
+                                ack_msg = (
+                                    f"⏳ 收到！这个任务需要多步骤执行，"
+                                    f"我已分配 PM Agent [{pm.worker_id}] "
+                                    f"(任务 {pm_task_id}) 在后台规划和执行。\n"
+                                    f"当前有 {active_count} 个 PM 在工作。\n"
+                                    f"你可以随时问「进度?」来查看。"
+                                )
                             return LoopResult(
                                 success=True, task_id=task_id,
-                                skill_used="_project_create", model_used="n/a",
+                                skill_used="_pm_spawn", model_used="n/a",
                                 output=ack_msg, tokens_used=0,
                                 elapsed_s=round(time.monotonic() - start, 3),
                                 governor_approved=True,
                             )
                         except Exception as e:
-                            logger.warning("[DECIDE] Project creation failed: %s, falling back to complex", e)
-                            # Fall through to complex handling
+                            logger.warning("[DECIDE] PM spawn failed: %s, falling back to CEO direct", e)
+                            # Fall through to CEO direct handling
 
-                    # complexity == "complex" → CEO handles directly with agentic tool loop
-                    # CEO has web_search, run_command, memory tools — no need to spawn PM
-                    # Only "project" spawns PM (multi-phase initiative needing decomposition)
-                    # complexity == "simple" or "complex" → fall through to existing flow
+                    # complexity == "simple" → fall through to existing CEO flow
                 except Exception as e:
                     logger.warning("[DECIDE] PM routing failed: %s, falling back to direct", e)
 

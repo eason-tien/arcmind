@@ -741,15 +741,37 @@ class PMAgent:
 
     def _execute_step(self, step_desc: str, prior_results: list) -> dict:
         """
-        Execute a single step using the agentic tool loop directly.
+        Execute a single step. V5: Try Delegator first for specialist routing,
+        then fallback to direct agentic tool loop.
 
-        V4: Bypasses full MainLoop OODA cycle (no classifier, no memory query,
-        no task creation overhead). PM steps go straight to LLM + tools.
-        This avoids:
-        - Recursive PM spawn (the root cause of 10M+ token waste)
-        - Unnecessary task_tracker entries for each sub-step
-        - Full ORIENT phase memory loading per step
+        Priority:
+        1. Delegator → sub-agent (search/code/qa/sre) if confidence >= 0.70
+        2. Direct run_agentic_loop (PM's own LLM + tools)
         """
+        # ── V5: Try Delegator for specialist sub-agent ──
+        try:
+            from runtime.delegator import delegator
+            match = delegator.route(step_desc)
+            if match and match.confidence >= 0.70:
+                logger.info("[PM:%s] Delegating step to %s (conf=%.2f): %s",
+                            self.task_id, match.agent_id, match.confidence,
+                            step_desc[:60])
+                result = delegator.execute(match, step_desc)
+                if result.get("success"):
+                    return {
+                        "success": True,
+                        "output": result.get("output", ""),
+                        "error": None,
+                        "tokens": result.get("tokens", 0),
+                        "delegated_to": match.agent_id,
+                    }
+                # Delegation failed → fallback to direct execution below
+                logger.warning("[PM:%s] Delegated step failed (%s), falling back to direct",
+                               self.task_id, match.agent_id)
+        except Exception as deleg_err:
+            logger.debug("[PM:%s] Delegator routing skipped: %s", self.task_id, deleg_err)
+
+        # ── Fallback: Direct agentic tool loop ──
         from runtime.tool_loop import run_agentic_loop
 
         # Build prior context summary
