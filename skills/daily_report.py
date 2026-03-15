@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import ssl
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
@@ -44,6 +45,20 @@ def _get_location() -> dict:
     return _DEFAULT_LOCATION.copy()
 
 
+def _make_ssl_context() -> ssl.SSLContext:
+    """Create SSL context that works on macOS without Install Certificates.command."""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        pass
+    # macOS Python often lacks system certs; use unverified as fallback
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 def _set_location(location: dict) -> None:
     """Update user location."""
     _LOCATION_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -56,27 +71,29 @@ def _set_location(location: dict) -> None:
 # ── Weather ──────────────────────────────────────────────────────────────────
 
 def _fetch_wttr_weather(city: str) -> dict | None:
-    """Fetch weather from wttr.in with retry and longer timeout."""
+    """Fetch weather from wttr.in with retry and shorter timeout."""
     max_retries = 2
-    timeout = 20  # Increased from 10 to 20 seconds
+    timeout = 8  # Short timeout — if wttr.in is slow, fall through to Open-Meteo
+    ctx = _make_ssl_context()
     
     for attempt in range(max_retries):
         try:
             url = f"https://wttr.in/{urllib.parse.quote(city)}?format=j1&lang=zh-tw"
             req = urllib.request.Request(url, headers={"User-Agent": "ArcMind/0.3"})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
             return data
         except Exception as e:
             logger.warning(f"[DailyReport] wttr.in attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
                 import time
-                time.sleep(2)  # Wait before retry
+                time.sleep(1)
     return None
 
 
 def _fetch_open_meteo_weather(lat: float, lon: float) -> dict | None:
     """Fetch weather from Open-Meteo (free, no API key needed)."""
+    ctx = _make_ssl_context()
     try:
         url = (
             f"https://api.open-meteo.com/v1/forecast"
@@ -86,7 +103,7 @@ def _fetch_open_meteo_weather(lat: float, lon: float) -> dict | None:
             f"&timezone=auto"
         )
         req = urllib.request.Request(url, headers={"User-Agent": "ArcMind/0.3"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         return data
     except Exception as e:
@@ -338,6 +355,7 @@ def _get_iteration_progress() -> str:
 
 def _send_telegram(message: str) -> bool:
     """Send report via Telegram."""
+    ctx = _make_ssl_context()
     try:
         from config.settings import settings
         token = settings.telegram_bot_token
@@ -356,7 +374,7 @@ def _send_telegram(message: str) -> bool:
             "parse_mode": "HTML",
         }).encode()
         req = urllib.request.Request(url, data=data, method="POST")
-        urllib.request.urlopen(req, timeout=15)
+        urllib.request.urlopen(req, timeout=15, context=ctx)
         return True
     except Exception as e:
         logger.error("[DailyReport] Telegram send failed: %s", e)
