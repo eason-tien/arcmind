@@ -1257,28 +1257,15 @@ class MainLoop:
                 except Exception as _ge:
                     logger.debug("[Gate] Post-Gate error (pass-through): %s", _ge)
 
-            # ── P6-Layer3: 行動審計摘要（Proof-of-Work） ──
+            # ── P6-Layer3: 行動計數標記（不注入原始日誌到用戶回覆） ──
+            # 原始 tool_call 記錄保留在 result["tool_calls"]，
+            # 可透過 Activity Feed / API 查看。不汙染自然語言回覆。
             _tool_calls = result.get("tool_calls", [])
             if _tool_calls:
-                _action_lines = []
-                for tc in _tool_calls:
-                    _tn = tc.get("tool", "?")
-                    _ti = tc.get("input", {})
-                    _success = tc.get("success", True)
-                    _icon = "✅" if _success else "❌"
-                    # Build concise input summary
-                    _input_summary = ""
-                    if isinstance(_ti, dict):
-                        # Show first key=value pair for context
-                        for k, v in _ti.items():
-                            _vs = str(v)[:60]
-                            _input_summary = f'({k}="{_vs}")'
-                            break
-                    _out_preview = str(tc.get("output", ""))[:80].replace("\n", " ")
-                    _action_lines.append(f"  {_icon} {_tn}{_input_summary} → {_out_preview}")
-                if _action_lines:
-                    _action_summary = "\n\n📋 本次行動：\n" + "\n".join(_action_lines)
-                    output_text = output_text.rstrip() + _action_summary
+                _success = sum(1 for tc in _tool_calls if tc.get("success", True))
+                _total = len(_tool_calls)
+                if _total > 0:
+                    output_text = output_text.rstrip() + f"\n\n🔧 完成 {_success}/{_total} 項操作"
 
             return {
                 "success": True,
