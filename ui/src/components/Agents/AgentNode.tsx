@@ -7,7 +7,8 @@ import { Brain, Search, Code, Bug, Server, BarChart3, ClipboardList, Bot } from 
 const ROLE_ICONS: Record<string, React.ReactNode> = {
   ceo:      <Brain size={18} />,
   main:     <Brain size={18} />,  // backend CEO id
-  pm:       <ClipboardList size={18} />,
+  pm:        <ClipboardList size={18} />,
+  pm_worker: <ClipboardList size={18} />,  // PM sub-worker
   search:   <Search size={18} />,
   code:     <Code size={18} />,
   qa:       <Bug size={18} />,

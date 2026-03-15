@@ -36,7 +36,8 @@ export interface AgentData {
 const ROLE_COLORS: Record<string, { bg: string; border: string; accent: string }> = {
   ceo:      { bg: 'rgba(234,179,8,0.08)',   border: '#ca8a04', accent: '#eab308' },
   main:     { bg: 'rgba(234,179,8,0.08)',   border: '#ca8a04', accent: '#eab308' },  // backend CEO id
-  pm:       { bg: 'rgba(168,85,247,0.08)',  border: '#9333ea', accent: '#a855f7' },
+  pm:        { bg: 'rgba(168,85,247,0.08)',  border: '#9333ea', accent: '#a855f7' },
+  pm_worker: { bg: 'rgba(168,85,247,0.08)',  border: '#7c3aed', accent: '#a78bfa' },  // PM sub-worker
   search:   { bg: 'rgba(59,130,246,0.08)',  border: '#2563eb', accent: '#3b82f6' },
   code:     { bg: 'rgba(34,197,94,0.08)',   border: '#16a34a', accent: '#22c55e' },
   qa:       { bg: 'rgba(249,115,22,0.08)',  border: '#ea580c', accent: '#f97316' },
@@ -76,6 +77,8 @@ const DEFAULT_EDGES: Array<{ source: string; target: string; label?: string }> =
   { source: 'code', target: 'qa',       label: 'handoff' },
   // QA → SRE deploy handoff
   { source: 'qa',   target: 'sre',      label: 'handoff' },
+  // PM → pm_worker sub-execution
+  { source: 'pm',   target: 'pm_worker', label: 'pipeline' },
   // Security & Audit report to CEO
   { source: 'main', target: 'security', label: 'delegate' },
   { source: 'main', target: 'auditor',  label: 'delegate' },
@@ -85,10 +88,10 @@ const DEFAULT_EDGES: Array<{ source: string; target: string; label?: string }> =
 
 function autoLayout(agents: AgentData[]): Node[] {
   const tiers: Record<string, number> = {
-    main: 0, ceo: 0,                           // CEO at top
-    pm: 1, search: 1, analysis: 1,              // direct reports
-    code: 2, qa: 2, sre: 2, devops: 2,          // execution team
-    security: 3, auditor: 3,                     // governance
+    main: 0, ceo: 0,                                    // CEO at top
+    pm: 1, search: 1, analysis: 1,                       // direct reports
+    code: 2, qa: 2, sre: 2, devops: 2, pm_worker: 2,    // execution team
+    security: 3, auditor: 3,                              // governance
   };
 
   const tierCounts: Record<number, number> = {};
