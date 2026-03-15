@@ -641,10 +641,18 @@ def create_app() -> FastAPI:
     # V3: Governance routes (policies, approvals, audit, releases, knowledge graph)
     try:
         from api.routes.governance_routes import router as governance_router
-        app.include_router(governance_router, tags=["governance"])
+        app.include_router(governance_router, prefix="/v1/governance", tags=["governance"])
         logger.info("[App] V3 Governance routes registered at /v1/governance")
     except ImportError:
         logger.debug("[App] V3 Governance routes not available")
+
+    # Prometheus metrics exporter
+    try:
+        from api.routes.metrics_routes import router as metrics_router
+        app.include_router(metrics_router, tags=["metrics"])
+        logger.info("[App] Prometheus metrics endpoint registered at /metrics")
+    except ImportError:
+        logger.debug("[App] Metrics routes not available")
 
     # ── Federation (ArcMind ↔ ArcMind 跨實例協作) ────────────────────────
     if settings.federation_enabled:
